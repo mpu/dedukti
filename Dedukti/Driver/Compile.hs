@@ -25,6 +25,9 @@ import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Set as Set
 import Control.Applicative
 
+-- Just to force cabal to compile it.
+import Dedukti.CodeGen.Lua.Match
+
 
 -- | Qualify all occurrences of identifiers defined in current
 -- module. This gives us an easy way to distinguish constants,

@@ -63,6 +63,7 @@ executable dedukti
                        Dedukti.Module
                        Dedukti.CodeGen
                        Dedukti.CodeGen.Exts
+                       Dedukti.CodeGen.Lua.Match
                        Dedukti.Analysis.Rule
                        Dedukti.Analysis.Scope
                        Dedukti.Analysis.Dependency
