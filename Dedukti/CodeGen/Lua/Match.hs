@@ -1,8 +1,10 @@
 module Dedukti.CodeGen.Lua.Match
     ( MatchBranch(..), Con(..), Path(..), DTree(..), Choice(..), Pat(..)
-    , compile) where
+    , compile
+    , Pretty(..)) where
 
-import Control.Arrow
+import Control.Arrow (first)
+import Text.PrettyPrint.Leijen
 
 
 -- This is all based on Luc Maranget's paper:
@@ -69,7 +71,7 @@ decomp n (p:ps) = map (`Access` p) (take n [1..]) ++ ps
 
 -- | Compile a pattern matrix into a good decision tree. No sharing is
 -- performed.
-compile :: (Eq id, MatchBranch r) => [Path id] -> PMat r id -> DTree r id
+compile :: (Eq id{-, MatchBranch r-}) => [Path id] -> PMat r id -> DTree r id
 compile pth [] = Fail
 compile pth ((ps, r):_) | and (map isGlob ps) = Match r
 compile pth m@((ps, _):_) =
@@ -81,3 +83,22 @@ compile pth m@((ps, _):_) =
               where nglob n (p:ps) | isGlob p = nglob (n + 1) ps
                     nglob n (_:ps) = n
         cases = map (\(p:_, _) -> p) m' >>= \p -> case p of { PGlob -> []; PCon c _ -> [c] }
+
+-- Pretty printing of decision trees.
+
+block d = group $ nest 2 (lbrace <$> d) <$> rbrace
+
+instance (Pretty r, Pretty id) => Pretty (DTree r id) where
+    pretty (Switch path ch) = text "switch" <+> pretty path <+> block (pretty ch)
+    pretty (Match r) = text "MATCH" <+> pretty r
+    pretty Fail = text "FAIL"
+
+instance (Pretty id) => Pretty (Path id) where
+    pretty (Var id) = pretty id
+    pretty (Access n p) = pretty p <> dot <> pretty n
+
+instance (Pretty r, Pretty id) => Pretty (Choice r id) where
+    pretty (Case (Con c _) t ch) =
+        text "case" <+> pretty c <+> text "->" <+> block (pretty t)
+        <$> pretty ch
+    pretty (Default t) = text "default ->" <+> block (pretty t)
