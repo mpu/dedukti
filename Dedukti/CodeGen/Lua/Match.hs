@@ -1,7 +1,7 @@
 module Dedukti.CodeGen.Lua.Match
-    ( Con(..), Path(..), DTree(..), Choice(..), Pat(..)
+    ( Con(..), Path(..), DTree(..), Choice(..), Pat(..), PMat
     , compile
-    , Pretty(..)) where
+    , Pretty(..) ) where
 
 import Control.Arrow (first)
 import Text.PrettyPrint.Leijen
@@ -32,7 +32,6 @@ data Choice r id = Case (Con id) (DTree r id) (Choice r id)
 
 -- | A pattern.
 data Pat r id = PCon (Con id) [Pat r id]
-              -- | Var id a
               | PGlob
                 deriving (Show)
 
