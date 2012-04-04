@@ -1,5 +1,5 @@
 module Dedukti.CodeGen.Lua.Match
-    ( MatchBranch(..), Con(..), Path(..), DTree(..), Choice(..), Pat(..)
+    ( Con(..), Path(..), DTree(..), Choice(..), Pat(..)
     , compile
     , Pretty(..)) where
 
@@ -9,8 +9,6 @@ import Text.PrettyPrint.Leijen
 
 -- This is all based on Luc Maranget's paper:
 --   Compiling Pattern Matching to Good Decision Trees, ML'08
-
-class MatchBranch r where matchFailure :: r
 
 -- | A constructor that can be matched on.
 data Con id = Con { c_id :: id,  c_arity :: Int }
@@ -36,7 +34,7 @@ data Choice r id = Case (Con id) (DTree r id) (Choice r id)
 data Pat r id = PCon (Con id) [Pat r id]
               -- | Var id a
               | PGlob
-                deriving (Eq, Show)
+                deriving (Show)
 
 -- | A pattern matrix.
 type PMat r id = [([Pat r id], r)]
@@ -59,7 +57,7 @@ specialize c@(Con _ ar) ps = go =<< ps
 
 -- | Return the default matrix, this is the pattern matrix to be
 -- used when the head constructor of the first value is not in the head
--- column
+-- column.
 def :: PMat r id -> PMat r id
 def ((PGlob:ps, r):ls) = (ps, r) : def ls
 def (_:ls)             = def ls
@@ -71,7 +69,7 @@ decomp n (p:ps) = map (`Access` p) (take n [1..]) ++ ps
 
 -- | Compile a pattern matrix into a good decision tree. No sharing is
 -- performed.
-compile :: (Eq id{-, MatchBranch r-}) => [Path id] -> PMat r id -> DTree r id
+compile :: (Eq id) => [Path id] -> PMat r id -> DTree r id
 compile pth [] = Fail
 compile pth ((ps, r):_) | and (map isGlob ps) = Match r
 compile pth m@((ps, _):_) =
