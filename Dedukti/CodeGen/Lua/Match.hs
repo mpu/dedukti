@@ -76,13 +76,13 @@ compile pth [] = Fail
 compile pth ((ps, r):_) | and (map isGlob ps) = Match r
 compile pth m@((ps, _):_) =
     Switch p (foldl (\ch (dt, con) -> Case con dt ch) (Default Fail) -- Put a real default here.
-                    $ map (\c -> (compile (decomp (c_arity c) pth') (specialize c m'), c)) cases)
+                    $ [ (compile (decomp (c_arity c) pth') (specialize c m'), c) | c <- cases ])
   where m' = map (first $ pull n) m
         pth'@(p:_) = pull n pth
         n = nglob 0 ps -- This is where we can plug heuristics.
               where nglob n (p:ps) | isGlob p = nglob (n + 1) ps
                     nglob n (_:ps) = n
-        cases = map (\(p:_, _) -> p) m' >>= \p -> case p of { PGlob -> []; PCon c _ -> [c] }
+        cases = [ c | ((PCon c _):_, _) <- m' ]
 
 -- Pretty printing of decision trees.
 
