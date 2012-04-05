@@ -8,6 +8,7 @@ module Dedukti.CodeGen.Exts
     (module Dedukti.CodeGen, Code) where
 
 import Dedukti.CodeGen
+import Dedukti.CodeGen.Tools
 import Dedukti.Core
 import Dedukti.Module
 import Dedukti.Pretty
@@ -17,7 +18,6 @@ import qualified Language.Haskell.Exts.Build as Hs
 import Language.Haskell.Exts.Pretty
 import Language.Haskell.Exts.QQ
 import qualified Data.ByteString.Lazy.Char8 as B
-import Data.Char (toUpper)
 import Data.List (foldl')
 import qualified Data.Stream as Stream
 import Prelude hiding ((*))
@@ -78,26 +78,6 @@ instance CodeGen Record where
         where imports = runtime : map (\m -> Hs.ImportDecl (*) (modname m) True False Nothing Nothing Nothing) deps
               runtime = Hs.ImportDecl (*) (Hs.ModuleName "Dedukti.Runtime") False False Nothing Nothing Nothing
               modname m = Hs.ModuleName $ B.unpack $ B.intercalate "." $ map capitalize $ toList m
-
--- | A similar encoding of names as the z-encoding of GHC. Non-letter
--- characters are escaped with an x.
-xencode :: Qid -> String
-xencode qid =
-    B.unpack $
-     joinQ (qid_qualifier qid) `B.append`
-     -- Prepend all idents with an x to avoid clash with runtime functions.
-     B.cons 'x' (enc $ fromAtom $ qid_stem qid) `B.append`
-     joinS (qid_suffix qid)
-        where joinQ Root = ""
-              joinQ (h :. x) = joinQ h `B.append` capitalize (fromAtom x) `B.append` "."
-              joinS Root = ""
-              joinS (h :. x) = joinS h `B.append` "_" `B.append` fromAtom x
-              enc = B.concatMap f where
-                  f 'x'  = "xx"
-                  f '\'' = "xq"
-                  f '_'  = "xu"
-                  f x | x >= '0', x <= '9' = 'x' `B.cons` B.singleton x
-                      | otherwise = B.singleton x
 
 function :: Em RuleSet -> Hs.Decl
 function (RS x _ []) = Hs.nameBind (*) (varName (x .$ "c")) (constant x)
@@ -169,17 +149,11 @@ typedAbstraction x ty t = [hs| TPi $(dom ty) (\(Pair ((xt)) ((xc))) -> $t) |]
                  then term ty else [hs| sbox $(term ty) Type $(code ty) |]
 
 varName :: Id Record -> Hs.Name
-varName = Hs.name . xencode . unqualify
+varName = Hs.name . xencode "." . unqualify
 
 -- | Smart variable constructor.
 var :: Id Record -> Hs.Exp
-var = Hs.var . Hs.name . xencode
+var = Hs.var . Hs.name . xencode "."
 
 -- | Produce a set of variables y1, ..., yn
 variables = Stream.unfold (\i -> (Hs.name $ ('y':) $ show i, i + 1)) 0
-
--- | Capitalize a word.
-capitalize :: B.ByteString -> B.ByteString
-capitalize s = case B.uncons s of
-             Nothing -> B.empty
-             Just (x, xs) -> toUpper x `B.cons` xs

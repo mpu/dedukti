@@ -62,7 +62,9 @@ executable dedukti
                        Dedukti.Config
                        Dedukti.Module
                        Dedukti.CodeGen
+                       Dedukti.CodeGen.Tools
                        Dedukti.CodeGen.Exts
+                       Dedukti.CodeGen.Lua
                        Dedukti.CodeGen.Lua.Match
                        Dedukti.Analysis.Rule
                        Dedukti.Analysis.Scope
@@ -75,6 +77,7 @@ executable dedukti
                        wl-pprint >= 1.0,
                        haskell-src-exts >= 1.1.0,
                        haskell-src-exts-qq >= 0.4,
+                       lua-lang,
                        Stream >= 0.4,
                        hmk >= 0.9.7,
                        stringtable-atom >= 0.0.6

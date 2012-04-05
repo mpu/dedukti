@@ -18,15 +18,12 @@ import Dedukti.Synthesis.ANF
 import Dedukti.Synthesis.CC
 import qualified Dedukti.CodeGen as CG
 import qualified Dedukti.CodeGen.Exts
---import qualified Dedukti.CodeGen.Lua
+import qualified Dedukti.CodeGen.Lua
 import qualified Dedukti.Rule as Rule
 import qualified Dedukti.Analysis.Rule as Rule
 import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Data.Set as Set
 import Control.Applicative
-
--- Just to force cabal to compile it.
-import qualified Dedukti.CodeGen.Lua.Match
 
 
 -- | Qualify all occurrences of identifiers defined in current
@@ -101,7 +98,7 @@ compileAST mod src@(decls, rules) = do
     >=> pass ({-# SCC "pass/hoist"   #-} descend hoist)       (text "Hoisting abstractions to toplevel ...")
            $ Rule.ruleSets decls rules
   parameter Config.cg >>= \cg -> case cg of
-    Just _ -> undefined
+    Just Config.Lua -> {-# SCC "cg" #-} goCG (undefined :: Dedukti.CodeGen.Lua.Code) mod rss deps
     Nothing -> {-# SCC "cg" #-} goCG (undefined :: Dedukti.CodeGen.Exts.Code) mod rss deps
   io $ B.writeFile (ifacePathFromModule mod) $ interface src
   where goCG :: forall g. CG.CodeGen g => g -> MName -> [RuleSet (Id g) (A g)] -> [MName] -> DkM ()
