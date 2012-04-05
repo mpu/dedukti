@@ -14,8 +14,8 @@ import Dedukti.DkM
 import Dedukti.Core
 import Dedukti.Analysis.Dependency
 import Dedukti.Analysis.Scope
-import Dedukti.Synthesis.ANF
-import Dedukti.Synthesis.CC
+-- import Dedukti.Synthesis.ANF
+-- import Dedukti.Synthesis.CC
 import qualified Dedukti.CodeGen as CG
 import qualified Dedukti.CodeGen.Exts
 import qualified Dedukti.CodeGen.Lua
