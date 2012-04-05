@@ -104,14 +104,6 @@ term _ = Lua.ENil
 lvar :: Lua.Name -> Lua.Exp
 lvar = Lua.EPre . Lua.Var
 
--- | Construct a qualified Lua variable expression.
--- varQ :: Id Record -> Lua.Exp
--- varQ = lvar . lname
-
--- | Construct a Lua local variable expression.
--- var :: Id Record -> Lua.Exp
--- var = varQ . unqualify
-
 -- | Construct a Lua Name from a qualified identifier.
 lname :: Id Record -> Lua.Name
 lname = Lua.Name . xencode "_"
