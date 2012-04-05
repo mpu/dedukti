@@ -32,7 +32,7 @@ instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
     emit rs@(RS x ty rules) = Rec x (length rules) (xcode:xterm++xrules)
-        where (tyn, tn, cn) = (lname (x .$ "ty"), codeName x, termName x)
+        where (tyn, tn, cn) = (lname (x .$ "ty"), termName x, codeName x)
               xcode = let c = ruleCode rules in [luas| local `cn  = $c; |]
               xterm =
                 let tycode = code ty
