@@ -80,6 +80,24 @@ code _ = Lua.ENil
 -- | Turn an expression into a term object.
 term :: Em Expr -> Lua.Exp
 term (V x _) = lvar (termName x)
+term (B (L x ty) t _) =
+    let (xt, xc) = (termName x, codeName x)
+        tyterm = case ty of
+                   Nothing -> [luae| nil |]
+                   Just ty -> [luae| chkabs($t, $c) |]
+                              where t = term ty; c = code ty
+        tm = term t
+    in [luae| { tk = tlam; tlam = { $tyterm, function (`xt, `xc) return $tm; end } } |]
+term (B (x ::: ty) t _) =
+    let (xt, xc) = (termName x, codeName x)
+        tyterm = if isVariable ty then term ty else [luae| chkabs ($t, $c) |]
+                 where t = term ty; c = code ty
+        tm = term t
+    in [luae| { tk = tpi; tpi = { $tyterm, function (`xt, `xc) return $tm; end } } |]
+term (A t1 t2 _) =
+    let tt1 = term t1; tt2 = term t2
+    in [luae| { tk = tapp; tapp = { $tt1, $tt2 } } |]
+term Type = [luae| { tk = ttype } |]
 term _ = Lua.ENil
 
 -- | Construct a variable expression from a name.
@@ -87,12 +105,12 @@ lvar :: Lua.Name -> Lua.Exp
 lvar = Lua.EPre . Lua.Var
 
 -- | Construct a qualified Lua variable expression.
-varQ :: Id Record -> Lua.Exp
-varQ = lvar . lname
+-- varQ :: Id Record -> Lua.Exp
+-- varQ = lvar . lname
 
 -- | Construct a Lua local variable expression.
-var :: Id Record -> Lua.Exp
-var = varQ . unqualify
+-- var :: Id Record -> Lua.Exp
+-- var = varQ . unqualify
 
 -- | Construct a Lua Name from a qualified identifier.
 lname :: Id Record -> Lua.Name
