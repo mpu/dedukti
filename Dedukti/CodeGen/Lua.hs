@@ -65,6 +65,16 @@ ruleCode _ = Lua.ENil
 -- | Turn an expression into a code object.
 code :: Em Expr -> Lua.Exp
 code (V x _) = lvar (codeName x)
+code (B (L x _) t _) =
+    let xn = codeName x; c = code t
+    in [luae| { ck = clam, clam = function (`xn) return $c; end } |]
+code (B (x ::: ty) t _) =
+    let xn = codeName x; cty = code ty; c = code t
+    in [luae| { ck = cpi, cpi = { $cty, function (`xn) return $c; end } } |]
+code (A t1 t2 _) =
+    let c1 = code t1; c2 = code t2
+    in [luae| ap($c1, $c2) |]
+code Type = [luae| { ck = ctype } |]
 code _ = Lua.ENil
 
 -- | Turn an expression into a term object.
