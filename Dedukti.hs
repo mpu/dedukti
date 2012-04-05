@@ -37,11 +37,11 @@ flagDescriptions =
      "Build MODULE and all its dependencies in one go.")
   , ([Unary "-jN" (FlagJobs . read)],
      "Perform N jobs at once.")
-  , ([Nullary "-fexternal" (FlagFormat Config.External)],
+  , ([Nullary "--fexternal" (FlagFormat Config.External)],
      "Force recognizing input as (human-readable) external format.")
-  , ([Nullary "-fprefix-notation" (FlagFormat Config.Prefix)],
+  , ([Nullary "--fprefix-notation" (FlagFormat Config.Prefix)],
      "Force recognizing input as (fast) prefix format.")
-  , ([Nullary "-flua" (FlagCodeGen Config.Lua)],
+  , ([Nullary "--flua" (FlagCodeGen Config.Lua)],
      "Compile to Lua code.")
   , ([Unary "-v[v]" $ \arg -> if null arg then FlagVerbose else FlagVeryVerbose],
      "Be verbose, -vv to be even more verbose.")
