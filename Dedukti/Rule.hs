@@ -7,10 +7,10 @@
 module Dedukti.Rule where
 
 import Dedukti.Core
-import qualified Dedukti.Reduction as Red
 import Data.List (groupBy, sortBy)
 import qualified Data.Stream as Stream
 import Control.Monad.State
+import Control.Arrow (second)
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Prelude hiding (head)
@@ -18,16 +18,21 @@ import qualified Prelude
 
 
 -- | Left hand side of a rule.
-head :: TyRule id a -> Expr id a
+head :: TyRule id a -> Pat id a
 head (_ :@ lhs :--> _) = lhs
 
 -- | The head of the head of the rule.
 headConstant :: TyRule id a -> id
-headConstant r = unabstract (head r) $ \_ t _ -> unapply t $ \(V x _) _ _ -> x
+headConstant = go . head
+    where go (PV x) = x
+          go (PA x _ _) = x
 
--- | The patterns to which the head constant is applied.
-patterns :: Ord id => TyRule id a -> [Expr id a]
-patterns r = unapply (Red.zeta (head r)) $ \_ ts _ -> ts
+-- | The patterns to which the head constant is applied, the integer is the
+-- number of dot patterns at the head of the application.
+patterns :: Ord id => TyRule id a -> (Int, [Pat id a])
+patterns = go . head
+    where go (PV x) = (0, [])
+          go (PA x dps ps) = (length dps, ps)
 
 -- | Group set of rules by head constant.
 group :: Eq id => [TyRule id a] -> [[TyRule id a]]
@@ -35,7 +40,7 @@ group = groupBy f where
     f x y = headConstant x == headConstant y
 
 arity :: Ord id => TyRule id a -> Int
-arity = length . patterns
+arity = uncurry (+) . second length . patterns
 
 -- | Combine declarations with their associated rules, if any.
 ruleSets :: (Show id, Show a, Ord id) => [Binding id a] -> [TyRule id a] -> [RuleSet id a]
@@ -56,17 +61,19 @@ ruleSets ds rs = snd $ foldr aux (sortBy cmp (group rs), []) ds where
 -- names.
 linearize :: Ord id => Stream.Stream id -> TyRule id a -> (TyRule id a, [(id, id)])
 linearize xs (env :@ lhs :--> rhs) =
-    let (lhs', (_, _, constraints)) = runState (transformM f lhs) (xs, Set.empty, [])
+    let (lhs', (_, _, constraints)) = runState (f lhs) (xs, Set.empty, [])
         -- Add new variables to the environment, with same type as
         -- that of the variables they are unified to.
         env' = foldr (\(x,x') env -> x' ::: (env ! x) & env) env constraints
     in (env' :@ lhs' :--> rhs, constraints)
-    where f t@(V x a) | x `isin` env = do
-            (xs, seen, constraints) <- get
-            if x `Set.member` seen then
-                do let Stream.Cons x' xs' = xs
-                   put (xs', Set.insert x' seen, (x, x'):constraints)
-                   return $ V x' a else
-                do put (xs, Set.insert x seen, constraints)
-                   return t
-          f t = return t
+    where f t@(PV x) | x `isin` env = do
+              (xs, seen, constraints) <- get
+              if x `Set.member` seen
+                then
+                  do let Stream.Cons x' xs' = xs
+                     put (xs', Set.insert x' seen, (x, x'):constraints)
+                     return $ PV x'
+                else
+                  do put (xs, Set.insert x seen, constraints)
+                     return t
+          f (PA x dps ps) = return (PA x dps) `ap` mapM f ps

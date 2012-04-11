@@ -5,6 +5,8 @@
 module Dedukti.Core
     ( -- * Terms
       Expr(..), Binding(..)
+    -- * Patterns
+    , Pat(..)
     -- * Rules
     , Rule(..), Env, TyRule(..), RuleSet(..)
     -- * Type Synonyms
@@ -41,6 +43,10 @@ data Expr id a = B (Binding id a) (Expr id a) a -- ^ Bind an assumption
                | Kind
                  deriving (Eq, Ord, Show)
 
+data Pat id a = PV id                        -- ^ Pattern variable or constructor
+              | PA id [Expr id a] [Pat id a] -- ^ Applied pattern
+                deriving (Eq, Ord, Show)
+
 infix 2 :::
 
 -- | A type decorating a variable, a type on its own, or an expression
@@ -51,7 +57,7 @@ data Binding id a = L id (Maybe (Expr id a)) -- ^ Lambda binding
                     deriving (Eq, Ord, Show)
 
 -- | A rewrite rule.
-data Rule id a = Expr id a :--> Expr id a
+data Rule id a = Pat id a :--> Expr id a
                  deriving (Eq, Ord, Show)
 infix 9 :-->
 
@@ -241,7 +247,7 @@ instance Ord id => Transform (TyRule id a) where
                     `ap` descendM f rule
 
 instance Ord id => Transform (Rule id a) where
-    descendM f (lhs :--> rhs) = return (:-->) `ap` f lhs `ap` f rhs
+    descendM f (lhs :--> rhs) = return (lhs :-->) `ap` f rhs
 
 instance Ord id => Transform (RuleSet id a) where
     descendM f RS{..} =
