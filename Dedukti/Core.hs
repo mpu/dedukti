@@ -25,7 +25,7 @@ module Dedukti.Core
     -- * Smart constructors
     , abstract, unabstract, apply, unapply
     -- * Transformations
-    , Transform(..), transform, descend
+    , Transform(..), transform, descend, descendE
     -- * Query
     , everyone
     ) where
@@ -97,6 +97,7 @@ type instance Id (Rule id a) = id
 type instance Id (TyRule id a) = id
 type instance Id (RuleSet id a) = id
 type instance Id (Expr id a) = id
+type instance Id (Pat id a) = id
 
 type instance A  [t] = A t
 type instance A  (Maybe t) = A t
@@ -106,6 +107,7 @@ type instance A  (Rule id a) = a
 type instance A  (TyRule id a) = a
 type instance A  (RuleSet id a) = a
 type instance A  (Expr id a) = a
+type instance A  (Pat id a) = a
 
 bind_name :: Binding id a -> id
 bind_name (L x _) = x
@@ -232,51 +234,62 @@ class Ord (Id t) => Transform t where
     -- 'transformM' in terms of 'descendM' for all instances other than
     -- @Expr id a@ is provided.
     transformM :: Monad m => (Expr (Id t) (A t) -> m (Expr (Id t) (A t))) -> t -> m t
-    transformM f = descendM (transformM f)
+    transformM f = descendM return (transformM f)
 
     -- | Helper function for top-down transformations.
-    descendM :: Monad m => (Expr (Id t) (A t) -> m (Expr (Id t) (A t))) -> t -> m t
+    descendM :: Monad m => (Pat (Id t) (A t) -> m (Pat (Id t) (A t))) ->
+                           (Expr (Id t) (A t) -> m (Expr (Id t) (A t))) -> t -> m t
 
 instance Ord id => Transform (Module id a) where
-    descendM f (decls, rules) =
-        return (,) `ap` descendM f decls `ap` descendM f rules
+    descendM g f (decls, rules) =
+        (,) `liftM` descendM g f decls `ap` descendM g f rules
 
 instance Ord id => Transform (Binding id a) where
-    descendM f (L x t) = return (L x) `ap` T.mapM f t
-    descendM f (x ::: ty) = return (x :::) `ap` f ty
-    descendM f (x := t) = return (x :=) `ap` f t
+    descendM g f (L x t) = L x `liftM` T.mapM f t
+    descendM g f (x ::: ty) = (x :::) `liftM` f ty
+    descendM g f (x := t) = (x :=) `liftM` f t
 
 instance Ord id => Transform (TyRule id a) where
-    descendM f (env :@ rule) =
-        return (:@) `ap` (return fromBindings `ap` descendM f (env_bindings env))
-                    `ap` descendM f rule
+    descendM g f (env :@ rule) =
+        (:@) `liftM` (return fromBindings `ap` descendM g f (env_bindings env))
+                `ap` descendM g f rule
 
 instance Ord id => Transform (Rule id a) where
-    descendM f (lhs :--> rhs) = return (lhs :-->) `ap` f rhs
+    descendM g f (lhs :--> rhs) = (:-->) `liftM` g lhs `ap` f rhs
 
 instance Ord id => Transform (RuleSet id a) where
-    descendM f RS{..} =
-        return RS `ap` return rs_name `ap` f rs_type `ap` descendM f rs_rules
+    descendM g f RS{..} =
+        RS rs_name `liftM` f rs_type `ap` descendM g f rs_rules
 
 instance Ord id => Transform (Expr id a) where
-    transformM f = descendM (transformM f) >=> f
+    transformM f = descendM return (transformM f) >=> f
 
-    descendM f (B b t a) = return B `ap` descendM f b `ap` f t `ap` return a
-    descendM f (A t1 t2 a) = return A `ap` f t1 `ap` f t2 `ap` return a
-    descendM f t = return t
+    descendM g f (B b t a) = B `liftM` descendM g f b `ap` f t `ap` return a
+    descendM g f (A t1 t2 a) = A `liftM` f t1 `ap` f t2 `ap` return a
+    descendM g f t = return t
+
+instance Ord id => Transform (Pat id a) where
+    transformM = const return
+
+    descendM g f (PA x dps ps) = PA x `liftM` T.mapM f dps `ap` T.mapM g ps
+    descendM g f t = return t
 
 instance Transform t => Transform [t] where
-    descendM f = T.mapM (descendM f)
+    descendM g f = T.mapM (descendM g f)
 
 instance Transform a => Transform (Maybe a) where
-    descendM f = T.mapM (descendM f)
+    descendM g f = T.mapM (descendM g f)
 
 -- | Pure bottom-up transformation on terms.
 transform :: Transform t => (Expr (Id t) (A t) -> Expr (Id t) (A t)) -> t -> t
 transform f = runIdentity . transformM (return . f)
 
-descend :: Transform t => (Expr (Id t) (A t) -> Expr (Id t) (A t)) -> t -> t
-descend f = runIdentity . descendM (return . f)
+descend :: Transform t => (Pat (Id t) (A t) -> Pat (Id t) (A t)) ->
+                          (Expr (Id t) (A t) -> Expr (Id t) (A t)) -> t -> t
+descend g f = runIdentity . descendM (return . g) (return . f)
+
+descendE :: Transform t => (Expr (Id t) (A t) -> Expr (Id t) (A t)) -> t -> t
+descendE = descend id
 
 -- | Produces all substructures of the given term. Often useful as a generator
 -- in a list comprehension.
