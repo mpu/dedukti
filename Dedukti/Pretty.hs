@@ -43,8 +43,9 @@ instance Pretty id => Pretty (Expr id a) where
 instance Pretty id => Pretty (Pat id a) where
     pretty (PV x) = pretty x
     pretty (PA x dps ps) =
-        let g t = if isAtomicP t then pretty t else parens (pretty t)
-        in pretty x <+> hsep (map (braces . pretty) dps) <+> hsep (map g ps)
+        let f l = if null l then id else (hsep (map (braces . pretty) l) <+>)
+            g t = if isAtomicP t then pretty t else parens (pretty t)
+        in pretty x <+> f dps (hsep (map g ps))
 
 instance Pretty id => Pretty (Rule id a) where
     pretty (lhs :--> rhs) = pretty lhs <+> text "-->" <+> pretty rhs
