@@ -133,12 +133,14 @@ constant c = [hs| Con $(Hs.strE $ show $ pretty c) |]
 
 pat :: Em Env -> Em Pat -> Hs.Pat
 pat env (PV x) | x `isin` env = Hs.pvar (varName (x .$ "c"))
-pat env (PA x dps ps) = go (Hs.PParen (Hs.pApp (Hs.name "Con") [Hs.strP (show (pretty x))])) dps ps
+pat env (PV x) = primConP x
+pat env (PA x dps ps) = go (primConP x) dps ps
     where go q (dp:dps) ps = go (primAppP q Hs.PWildCard) dps ps
           go q [] (p:ps)   = go (primAppP q (pat env p)) [] ps
           go q [] []       = q
 
 -- | Build a pattern matching constant.
+primConP x = Hs.PParen (Hs.pApp (Hs.name "Con") [Hs.strP (show (pretty x))])
 primAppP t1 t2 = Hs.PParen (Hs.pApp (Hs.name "App") [t1, t2])
 
 -- | Turn a pattern into its Haskell representation (a term object).

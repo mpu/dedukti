@@ -76,4 +76,5 @@ linearize xs (env :@ lhs :--> rhs) =
                 else
                   do put (xs, Set.insert x seen, constraints)
                      return t
+          f t@(PV x) = return t
           f (PA x dps ps) = return (PA x dps) `ap` mapM f ps
