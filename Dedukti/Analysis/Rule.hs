@@ -45,10 +45,9 @@ instance Exception BadArity
 checkArity :: [TyRule Qid a] -> DkM ()
 checkArity rules = do
     say Verbose $ text "Checking arity of rules ..."
-    mapM_ (\(l:ls) -> chk (Rule.headConstant l) (napps (Rule.head l)) ls)
+    mapM_ (\(l:ls) -> chk (Rule.headConstant l) (Rule.arity l) ls)
           $ Rule.group rules
-  where chk id n l = when (or (map ((/=) n . napps . Rule.head) l)) (throw $ BadArity id)
-        napps e = unapply e (\_ x _ -> length x)
+  where chk id n l = when (or (map ((/=) n . Rule.arity) l)) (throw $ BadArity id)
 
 newtype BadPattern = BadPattern [Qid]
     deriving (Eq, Ord, Typeable)
@@ -64,5 +63,7 @@ instance Exception BadPattern
 -- variables in the rule environment.
 checkHead :: TyRule Qid a -> DkM ()
 checkHead (env :@ lhs :--> rhs) =
-    let bad = [ x | A (V x _) _ _ <- everyone lhs, x `isin` env ]
+    let bad = [ x | x <- heads lhs, x `isin` env ]
+        heads (PV _) = []
+        heads (PA x _ ps) = x:concatMap heads ps
     in when (not (null bad)) $ throw (BadPattern bad)
