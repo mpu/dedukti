@@ -152,16 +152,34 @@ applicative = (\xs -> case xs of
               <$> many1 simple
               <?> "applicative"
 
+-- | Left hand side pattern of a rewrite rule.
+--
+-- > pattern ::= ident
+-- >           | ident dotpats spats
+-- >
+-- > dotpats ::=
+-- >           | dotpats "{" term "}"
+-- >
+-- > spats ::= ident
+-- >         | "(" pattern ")"
+-- >         | spats qid
+-- >         | spats "(" pattern ")"
+pattern = do id <- ident
+             PA id <$> dotpats <*> spats <|> return (PV id)
+          <?> "pattern"
+    where dotpats = many (braces term) <?> "dotpats"
+          spats = many1 (PV <$> ident <|> parens pattern) <?> "spats"
+
 -- | A rule.
 --
--- > rule ::= env term "-->" term "."
+-- > rule ::= env pattern "-->" term "."
 -- > env ::= "[]"
 -- >       | "[" env2 "]"
 -- > env2 ::= binding
 -- >        | binding "," env2
 rule = ((\env lhs rhs -> foldr (&) emptyEnv env :@ lhs :--> rhs)
         <$> brackets (sepBy binding comma)
-        <*> term
+        <*> pattern
         <*  reservedOp "-->"
         <*> term
         <*  dot) >>= addRule
