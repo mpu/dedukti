@@ -82,12 +82,12 @@ checkScopes env (decls, rules) = do
             chkExpr env t
             return $ ins x env
           chkRule topenv r@(env :@ rule) = do
-            lvars <- patVars topenv (Rule.head r)
-            let lhsvars = AtomSet.fromList (map qid_stem lvars)
+            lhsvars <- liftM (AtomSet.fromList . map qid_stem) (patVars topenv $ Rule.head r)
             mapM_ (\x -> when (qid_stem x `AtomSet.notMember` lhsvars) $
                          throw (IllegalEnvironment x)) (map bind_name $ env_bindings env)
             ruleenv <- foldM chkBinding topenv $ env_bindings env
-            descendM (chkExpr (Map.unionWith AtomSet.union topenv ruleenv)) rule
+            let env = Map.unionWith AtomSet.union topenv ruleenv
+            descendM (chkPat env) (chkExpr env) rule
           chkExpr env t@(V x _) = do
             when (x `notmem` env) (throw $ ScopeError x)
             return t
@@ -97,9 +97,15 @@ checkScopes env (decls, rules) = do
           chkExpr env (B (x ::: ty) t _)  = do
             chkExpr env ty
             chkExpr (ins x env) t
-          chkExpr env t = descendM (chkExpr env) t
+          chkExpr env t = descendM return (chkExpr env) t
+          chkPat env t@(PV x) = do
+            when (x `notmem` env) (throw $ ScopeError x)
+            return t
+          chkPat env t@(PA x dps ps) = do
+            when (x `notmem` env) (throw $ ScopeError x)
+            descendM (chkPat env) (chkExpr env) t
           patVars env (PV x) = return [x]
           patVars env (PA x dps ps) = do
-            mapM_ (chkExpr env) dps
-            xs <- return concat `ap` mapM (patVars env) ps
-            return $ x:xs
+            let zs = concatMap (\t -> [ x | (V x _) <- everyone t ]) dps
+            xs <- concat `liftM` mapM (patVars env) ps
+            return $ x : xs ++ zs
