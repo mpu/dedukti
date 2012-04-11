@@ -1,0 +1,24 @@
+(; Booleans. ;)
+
+Bool : Type.
+True : Bool.
+False : Bool.
+
+(; Integers. ;)
+
+Nat : Type.
+0 : Nat.
+S : Nat -> Nat.
+
+(; Vectors of Booleans. ;)
+
+Vec : Nat -> Type.
+Nil : Vec 0.
+Cons : n : Nat -> Bool -> Vec n -> Vec (S n).
+
+(; Dot pattern test. ;)
+
+hd : n : Nat -> Vec n -> Bool.
+[]                  hd 0 Nil              --> False.
+[n : Nat, b : Bool
+,v : Vec n]         hd {S n} (Cons n b v) --> b.

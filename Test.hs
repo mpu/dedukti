@@ -87,4 +87,5 @@ tests = [ testGroup "Smoke tests"
           , check "coc" []
           , check "logic" ["coc"]
           , check "peano" ["logic", "coc"]
+          , check "dotpat" []
           , checkFailure "bug" [] ] ]
