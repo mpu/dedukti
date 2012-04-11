@@ -16,6 +16,7 @@ module Dedukti.Core
     -- * Convenience functions
     , bind_name
     , isAbstraction, isVariable, isAtomic, isApplicative, isKind
+    , isAtomicP
     -- * Environments
     , emptyEnv, env_bindings, env_domain, env_codomain, (&), (!)
     , isin, fromBindings
@@ -126,6 +127,10 @@ isAtomic (V _ _) = True
 isAtomic Type = True
 isAtomic Kind = True
 isAtomic _ = False
+
+isAtomicP :: Pat id a -> Bool
+isAtomicP (PV _) = True
+isAtomicP _ = False
 
 -- | An atomic term or an application.
 isApplicative :: Expr id a -> Bool
