@@ -29,7 +29,7 @@ monadic :: Expr Qid Unannot -> Expr Qid Unannot
 monadic = runFresh . go where
   -- Maintain a counter for generating fresh identifiers.
   go (B b t a) = do
-    b' <- descendM go b
+    b' <- descendM return go b
     t' <- go t
     return $ B b' t' %% a
   go (A t1 t2 a) = do
@@ -49,7 +49,7 @@ anf (B (x := t1) (V x' _) _) | x == x' = t1
 anf (B (x := t1) t2 a) = case anf t1 of
   B (y := t3) t4 a' -> B (y := t3) (anf (B (x := t4) t2 %% a')) %% a
   t1' -> B (x := t1') (anf t2) %% a
-anf t = descend anf t
+anf t = descendE anf t
 
 -- | Sanity check.
 isANF :: Ord id => Expr id a -> Bool
