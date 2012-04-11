@@ -12,8 +12,7 @@ import Dedukti.DkM
 import qualified Dedukti.Rule as Rule
 import Dedukti.Pretty ()
 import Text.PrettyPrint.Leijen hiding (group)
-import Data.List (group, groupBy, sort)
-import Data.Function (on)
+import Data.List (group, sort)
 
 
 newtype NonContiguousRules = NonContiguousRules Qid
@@ -47,7 +46,7 @@ checkArity :: [TyRule Qid a] -> DkM ()
 checkArity rules = do
     say Verbose $ text "Checking arity of rules ..."
     mapM_ (\(l:ls) -> chk (Rule.headConstant l) (napps (Rule.head l)) ls)
-          $ groupBy ((==) `on` Rule.headConstant) rules
+          $ Rule.group rules
   where chk id n l = when (or (map ((/=) n . napps . Rule.head) l)) (throw $ BadArity id)
         napps e = unapply e (\_ x _ -> length x)
 
