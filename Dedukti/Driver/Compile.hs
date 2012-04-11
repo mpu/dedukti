@@ -32,7 +32,7 @@ import Control.Applicative
 -- locally bound in a term.
 selfQualify :: MName -> [Pa RuleSet] -> [Pa RuleSet]
 selfQualify mod rsets = let defs = Set.fromList (map rs_name rsets)
-                        in map (descend (f defs))
+                        in map (descend (g defs) (f defs))
                                (map (\RS{..} -> RS{rs_name = qualify mod rs_name, ..}) rsets)
     where f defs (V x a) | Nothing <- provenance x
                          , x `Set.member` defs = V (qualify mod x) %% a
@@ -40,7 +40,12 @@ selfQualify mod rsets = let defs = Set.fromList (map rs_name rsets)
               B (L x (f defs `fmap` ty)) (f (Set.delete x defs) t) %% a
           f defs (B (x ::: ty) t a) =
               B (x ::: f defs ty) (f (Set.delete x defs) t) %% a
-          f defs t = descend (f defs) (t :: Pa Expr)
+          f defs t = descend (g defs) (f defs) (t :: Pa Expr)
+          g defs (PV x) | Nothing <- provenance x
+                        , x `Set.member` defs = PV (qualify mod x)
+          g defs (PA x dps ps) | Nothing <- provenance x , x `Set.member` defs =
+              descend (g defs) (f defs) $ PA (qualify mod x) dps ps
+          g defs p = descend (g defs) (f defs) (p :: Pa Pat)
 
 -- | Read the interface file of each module name to collect the declarations
 -- exported by the module.
@@ -92,11 +97,11 @@ compileAST mod src@(decls, rules) = do
      {-# SCC "check/heads"      #-} mapM_ Rule.checkHead rules
   say Verbose $ text "Compiling" <+> text (show mod) <+> text "..."
   rss <- {-# SCC "pass" #-} do
-        pass ({-# SCC "pass/qual"    #-} selfQualify mod)     (text "Self qualifying constants ...")
-    >=> pass ({-# SCC "pass/monadic" #-} descend monadic)     (text "Transformation to monadic form ...")
-    >=> pass ({-# SCC "pass/anf"     #-} descend anf)         (text "Reduction to administrative normal form ...")
-    >=> pass ({-# SCC "pass/cc"      #-} descend closureConv) (text "Closure converting ...")
-    >=> pass ({-# SCC "pass/hoist"   #-} descend hoist)       (text "Hoisting abstractions to toplevel ...")
+        pass ({-# SCC "pass/qual"    #-} selfQualify mod)      (text "Self qualifying constants ...")
+    >=> pass ({-# SCC "pass/monadic" #-} descendE monadic)     (text "Transformation to monadic form ...")
+    >=> pass ({-# SCC "pass/anf"     #-} descendE anf)         (text "Reduction to administrative normal form ...")
+    >=> pass ({-# SCC "pass/cc"      #-} descendE closureConv) (text "Closure converting ...")
+    >=> pass ({-# SCC "pass/hoist"   #-} descendE hoist)       (text "Hoisting abstractions to toplevel ...")
            $ Rule.ruleSets decls rules
   parameter Config.cg >>= \cg -> case cg of
     Just _ -> undefined
