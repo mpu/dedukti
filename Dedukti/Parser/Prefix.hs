@@ -18,6 +18,8 @@ import Data.Char (isSpace)
 
 type Token = B.ByteString
 data Frame = Expr !(Pa Expr)
+           | Pat !(Pa Pat)
+           | Dot !(Pa Expr)
            | Binding !(Pa Binding)
            | Env [Pa Binding]
            | TyRule !(Pa TyRule)
@@ -40,11 +42,18 @@ step :: Token -> Stack -> Stack
 step ":" (Expr (V x _) : Expr y : xs) = Binding (x ::: y) : xs
 
 -- rules
-step "-->" (Env x : Expr y : Expr z : xs) = TyRule (fromBindings x :@ y :--> z) : xs
+step "-->" (Env x : Pat y : Expr z : xs) = TyRule (fromBindings x :@ y :--> z) : xs
 
 -- environments
 step "," (Binding x : Env y : xs) = Env (x:y) : xs
 step "[]" xs = Env [] : xs
+
+-- patterns
+step "$." (Expr e : xs)                    = Dot e : xs
+step "$v" (Expr (V x _) : xs)              = Pat (PV x) : xs
+step "@p" (Expr (V x _) : xs)              = Pat (PA x [] []) : xs
+step "@p" (Pat (PA x dps []) : Dot e : xs) = Pat (PA x (e:dps) []) : xs
+step "@p" (Pat (PA x dps ps) : Pat p : xs) = Pat (PA x dps (p:ps)) : xs
 
 -- expressions
 step "=>"   (Binding (x ::: ty) : Expr t : xs) = Expr (B (L x (Just ty)) t %% nann) : xs
