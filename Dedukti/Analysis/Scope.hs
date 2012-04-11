@@ -71,7 +71,7 @@ checkScopes env (decls, rules) = do
     where ins qid env = Map.insertWith' AtomSet.union (qid_qualifier qid)
                         (AtomSet.singleton (qid_stem qid)) env
           notmem qid env = maybe False (AtomSet.notMember (qid_stem qid))
-                        (Map.lookup (qid_qualifier qid) env)
+                                 (Map.lookup (qid_qualifier qid) env)
           chkBinding env (L x ty) = do
             chkExpr env `T.mapM` ty
             return $ ins x env
@@ -82,7 +82,8 @@ checkScopes env (decls, rules) = do
             chkExpr env t
             return $ ins x env
           chkRule topenv r@(env :@ rule) = do
-            let lhsvars = AtomSet.fromList [ qid_stem x | V x _ <- everyone (Rule.head r) ]
+            lvars <- patVars topenv (Rule.head r)
+            let lhsvars = AtomSet.fromList (map qid_stem lvars)
             mapM_ (\x -> when (qid_stem x `AtomSet.notMember` lhsvars) $
                          throw (IllegalEnvironment x)) (map bind_name $ env_bindings env)
             ruleenv <- foldM chkBinding topenv $ env_bindings env
@@ -97,3 +98,8 @@ checkScopes env (decls, rules) = do
             chkExpr env ty
             chkExpr (ins x env) t
           chkExpr env t = descendM (chkExpr env) t
+          patVars env (PV x) = return [x]
+          patVars env (PA x dps ps) = do
+            mapM_ (chkExpr env) dps
+            xs <- return concat `ap` mapM (patVars env) ps
+            return $ x:xs
