@@ -54,7 +54,7 @@ instance CodeGen Record where
               defs_rule n (env :@ lhs :--> rhs) =
                   let f (x ::: ty) rs = (emit (RS x ty []) :: Record) : rs
                       ruleCheck = let rule_box = varName (qid "rule" .$ "t")
-                                  in Rec (qid "rule") 0 [[dec| ((rule_box)) = checkRule $(term lhs) $(term rhs) |]]
+                                  in Rec (qid "rule") 0 [[dec| ((rule_box)) = checkRule $(pterm lhs) $(term rhs) |]]
                       Bundle decls = coalesce $ foldr f [ruleCheck] (env_bindings env)
                       rule = varName (x .$ "rule" .$ B.pack (show n))
                       body = Hs.letE decls [hs| main |]
@@ -113,10 +113,12 @@ function (RS x _ rs) = Hs.sfun (*) (varName (x .$ "c")) [] (Hs.UnGuardedRhs rhs)
 clause :: Em TyRule -> Hs.Match
 clause rule =
     let (lrule@(env :@ _ :--> rhs), constraints) = Rule.linearize qids rule
+        (ndots, pats) = Rule.patterns lrule
+        prefix = take ndots $ repeat Hs.PWildCard
     in if null constraints
-       then Hs.Match (*) (Hs.name "__") (map (pattern env) (Rule.patterns lrule))
+       then Hs.Match (*) (Hs.name "__") (prefix ++ map (pat env) pats)
             Nothing (Hs.UnGuardedRhs (code rhs)) Hs.noBinds
-       else Hs.Match (*) (Hs.name "__") (map (pattern env) (Rule.patterns lrule))
+       else Hs.Match (*) (Hs.name "__") (prefix ++ map (pat env) pats)
             Nothing (Hs.GuardedRhss [Hs.GuardedRhs (*) (guards constraints) (code rhs)]) Hs.noBinds
     where guards = let tt = Hs.pApp (Hs.name "()") []
                    in map (\(x, x') -> Hs.Generator (*) tt [hs| convertible 0 $(var (x .$ "c")) $(var (x' .$ "c")) |])
@@ -129,14 +131,31 @@ defaultClause x n =
 
 constant c = [hs| Con $(Hs.strE $ show $ pretty c) |]
 
-pattern :: Em Env -> Em Expr -> Hs.Pat
-pattern env (V x _) | x `isin` env = Hs.pvar (varName (x .$ "c"))
-pattern env expr = unapply expr (\(V x _) xs _ -> primAppsP x (map (pattern env) xs))
+pat :: Em Env -> Em Pat -> Hs.Pat
+pat env (PV x) | x `isin` env = Hs.pvar (varName (x .$ "c"))
+pat env (PA x dps ps) = go (Hs.PParen (Hs.pApp (Hs.name "Con") [Hs.strP (show (pretty x))])) dps ps
+    where go q (dp:dps) ps = go (primAppP q Hs.PWildCard) dps ps
+          go q [] (p:ps)   = go (primAppP q (pat env p)) [] ps
+          go q [] []       = q
 
 -- | Build a pattern matching constant.
-primConP c = Hs.PParen (Hs.pApp (Hs.name "Con") [Hs.strP (show (pretty c))])
 primAppP t1 t2 = Hs.PParen (Hs.pApp (Hs.name "App") [t1, t2])
-primAppsP c = foldl' primAppP (primConP c)
+
+-- | Turn a pattern into its Haskell representation (a term object).
+pterm :: Em Pat -> Hs.Exp
+pterm (PV x) = var (x .$ "t")
+pterm (PA x dps ps) = go (var (x .$ "t")) dps ps
+    where go t (dp:dps) ps = go [hs| TApp $t (Pair $(term dp) $(code dp)) |] dps ps
+          go t [] (p:ps)   = go [hs| TApp $t (Pair $(pterm p) $(pcode p)) |] [] ps
+          go t [] []       = t
+
+-- | Turn a pattern into a code object.
+pcode :: Em Pat -> Hs.Exp
+pcode (PV x) = var (x .$ "c")
+pcode (PA x dps ps) = go (var (x .$ "c")) dps ps
+    where go t (dp:dps) ps = go [hs| ap $t $(code dp) |] dps ps
+          go t [] (p:ps)   = go [hs| ap $t $(pcode p) |] [] ps
+          go t [] []       = t
 
 -- | Turn an expression into object code with types erased.
 code :: Em Expr -> Hs.Exp
@@ -151,7 +170,7 @@ code Type               = [hs| Type |]
 term :: Em Expr -> Hs.Exp
 term (V x _)            = var (x .$ "t")
 term (B (L x ty) t _)   = lambdaAbstraction x ty (term t)
-term (B (x ::: ty) t _) = typedAbstraction x ty (term t)
+term (B (x ::: ty) t _) = dependentProduct x ty (term t)
 term (B (x := t1) t2 _) = letBinding x t1 (term t2)
 term (A t1 t2 _)        = [hs| TApp $(term t1) (Pair $(term t2) $(code t2)) |]
 term Type               = [hs| TType |]
@@ -164,7 +183,7 @@ lambdaAbstraction x ty t = [hs| TLam $tyterm (\(Pair ((xt)) ((xc))) -> $t) |]
         tyterm = case ty of Nothing -> [hs| Nothing |]
                             Just ty -> [hs| Just $ sbox $(term ty) Type $(code ty) |]
 
-typedAbstraction x ty t = [hs| TPi $(dom ty) (\(Pair ((xt)) ((xc))) -> $t) |]
+dependentProduct x ty t = [hs| TPi $(dom ty) (\(Pair ((xt)) ((xc))) -> $t) |]
   where (xt, xc) = (varName (x .$ "t"), varName (x .$ "c"))
         dom ty = if isVariable ty
                  then term ty else [hs| sbox $(term ty) Type $(code ty) |]
