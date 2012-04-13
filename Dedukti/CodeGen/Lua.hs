@@ -7,6 +7,7 @@ import Dedukti.CodeGen.Tools
 import Dedukti.Module
 import Dedukti.Pretty
 -- import qualified Dedukti.CodeGen.Lua.Match as M
+import qualified Dedukti.Rule as Rule
 import qualified Language.Lua as Lua
 import Language.Lua.QQ
 import qualified Data.ByteString.Lazy.Char8 as B
@@ -33,7 +34,7 @@ instance CodeGen Record where
 
     emit rs@(RS x ty rules) = Rec x (length rules) (xcode:xterm++xrules)
         where (tyn, tn, cn) = (lname (x .$ "ty"), termName x, codeName x)
-              xcode = let c = ruleCode rules in [luas| local `cn  = $c; |]
+              xcode = let c = ruleCode x rules in [luas| local `cn  = $c; |]
               xterm =
                 let tycode = code ty
                     tydef = [luas| local `tyn = $tycode; |]
@@ -41,13 +42,10 @@ instance CodeGen Record where
                     tytdef = [luas| local ty = $tyterm; |]
                     startm = Lua.EString $ "Checking type of " ++ show (pretty (unqualify x)) ++ "."
                     endm = Lua.EString $ "Type of " ++ show (pretty (unqualify x)) ++ " OK."
-                in [ [luas| local `tn; |]
-                   , Lua.Do $ Lua.Block -- Here we check if sorts are valids in the gobal context.
-                       [ [luas| print($startm); |]
-                       , tydef, tytdef, [luas| chksort(ty); |]
-                       , [luas| `tn = mkbox(`cn, `tyn); |]
-                       , [luas| print($endm); |] ]
-                   ]
+                in [ [luas| print($startm); |]
+                   , tydef, tytdef, [luas| chksort(ty); |]
+                   , [luas| local `tn = mkbox(`cn, `tyn); |]
+                   , [luas| print($endm); |] ]
               xrules = [] -- zipWith checkr [1..] rules
               checkr n tr@(env :@ l :--> r) = undefined
 
@@ -59,8 +57,14 @@ instance CodeGen Record where
 -- | Compile a set of rules to a Lua term, here we use the
 -- Dedukti.CodeGen.Match module to compile the eventual pattern
 -- matching defined by the set of rules.
-ruleCode :: [Em TyRule] -> Lua.Exp
-ruleCode _ = Lua.ENil
+ruleCode :: Id Record -> [Em TyRule] -> Lua.Exp
+ruleCode x [] = constant x
+ruleCode x rs | a <- Rule.arity (head rs) =
+    undefined -- XXX
+
+-- | Turn a qualified id into a lua constant
+constant x = [luae| { ck = ccon; ccon = $s } |]
+    where s = Lua.EString (show (pretty x))
 
 -- | Turn an expression into a code object.
 code :: Em Expr -> Lua.Exp
