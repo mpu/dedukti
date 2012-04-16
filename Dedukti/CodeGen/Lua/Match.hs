@@ -51,7 +51,7 @@ isGlob _     = False
 specialize :: Eq id => Con id -> PMat r id -> PMat r id
 specialize c@(Con _ ar) ps = go =<< ps
     where go (((PCon c' l):ps), r) | c' == c = [(l ++ ps, r)]
-          go (PGlob:ps, r) = [(take ar (repeat PGlob) ++ ps, r)]
+          go (PGlob:ps, r) = [(replicate ar PGlob ++ ps, r)]
           go _ = []
 
 -- | Return the default matrix, this is the pattern matrix to be
