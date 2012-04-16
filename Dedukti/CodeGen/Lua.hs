@@ -62,7 +62,7 @@ ruleCode x [] = constant x
 ruleCode x rs | pmat <- mkPMat rs =
     undefined -- XXX
 
--- | Convert a decision tree in valid Lua code.
+-- | Convert a decision tree to valid Lua code.
 genDTree :: M.DTree (Em Expr) (Id Record) -> Lua.Stat
 genDTree M.Fail = [luas| error("Pattern matching failure."); |]
 genDTree (M.Match e) | c <- code e = [luas| return $c; |]
@@ -70,10 +70,9 @@ genDTree (M.Switch pth ch) = go [] ch $ Lua.EPre $ Lua.Field (access pth) (Lua.N
     where access (M.Var v) = Lua.Var $ codeName v
           access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "capp")) n
           go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree dt]
-          go cs (M.Case c dt ch) x =
-              let lc = Lua.EString $ xencode "_" $ M.c_id c
-                  cond = [luae| $x == $lc |]
-              in go ((cond, Lua.Block [genDTree dt]):cs) ch x
+          go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree dt]):cs) ch x
+              where lc = Lua.EString $ xencode "_" $ M.c_id c
+                    cond = [luae| $x == $lc |]
 
 -- | Create a pattern matrix from a list of patterns, the created pattern
 -- matrix can be used with the CodeGen.Lua.Match module.
