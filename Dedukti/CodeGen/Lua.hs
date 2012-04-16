@@ -6,7 +6,7 @@ import Dedukti.CodeGen
 import Dedukti.CodeGen.Tools
 import Dedukti.Module
 import Dedukti.Pretty
--- import qualified Dedukti.CodeGen.Lua.Match as M
+import qualified Dedukti.CodeGen.Lua.Match as M
 import qualified Dedukti.Rule as Rule
 import qualified Language.Lua as Lua
 import Language.Lua.QQ
@@ -59,8 +59,29 @@ instance CodeGen Record where
 -- matching defined by the set of rules.
 ruleCode :: Id Record -> [Em TyRule] -> Lua.Exp
 ruleCode x [] = constant x
-ruleCode x rs | a <- Rule.arity (head rs) =
+ruleCode x rs | pmat <- mkPMat rs =
     undefined -- XXX
+
+-- | Convert a decision tree in valid Lua code.
+genDTree :: M.DTree (Em Expr) (Id Record) -> Lua.Stat
+genDTree M.Fail = [luas| error("Pattern matching failure."); |]
+genDTree (M.Match e) | c <- code e = [luas| return $c; |]
+genDTree (M.Switch pth ch) = go [] ch $ Lua.EPre $ Lua.Field (access pth) (Lua.Name "ccon")
+    where access (M.Var v) = Lua.Var $ codeName v
+          access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "capp")) n
+          go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree dt]
+          go cs (M.Case c dt ch) x =
+              let lc = Lua.EString $ xencode "_" $ M.c_id c
+                  cond = [luae| $x == $lc |]
+              in go ((cond, Lua.Block [genDTree dt]):cs) ch x
+
+-- | Create a pattern matrix from a list of patterns, the created pattern
+-- matrix can be used with the CodeGen.Lua.Match module.
+mkPMat :: [Em TyRule] -> M.PMat (Em Expr) (Id Record)
+mkPMat = map (\r@(e :@ _ :--> rhs) -> (map (mkpat e) (Rule.patterns r), rhs))
+    where mkpat e (V x _) | x `isin` e = M.PGlob
+          mkpat e t = unapply t (\(V c _) ps _ -> patCon e c ps)
+          patCon e c ps = M.PCon (M.Con c $ length ps) (map (mkpat e) ps)
 
 -- | Turn a qualified id into a lua constant
 constant x = [luae| { ck = ccon; ccon = $s } |]
