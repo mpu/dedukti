@@ -61,16 +61,19 @@ instance Exception RuleError
 
 -- Convertible and static terms.
 
+type Cons f = (F f, f)
+
+data F t where
+    C :: F (B.ByteString, [Code]) -- ^ Applied constructor.
+    Z :: F Code                   -- ^ Definition.
+    S :: F x -> F (Code -> x)     -- ^ Rewrite rule.
+
 data Code = Var !Int
-          | Con !B.ByteString
+          | forall f. Cons (Cons f)
           | Lam !(Code -> Code)
-          | Pi  Code !(Code -> Code)
-          | App Code Code
+          | Pi Code !(Code -> Code)
           | Type
           | Kind
-            deriving (Eq, Show)
-
-instance Eq (Code -> Code)
 
 data Term = TLam !(Maybe Term) !(Pair -> Term)
           | TLet !Pair !(Pair -> Term)
@@ -78,29 +81,33 @@ data Term = TLam !(Maybe Term) !(Pair -> Term)
           | TApp !Term !Pair
           | TType
           | Box Code Code -- For typechecking purposes, not user generated.
-            deriving Show
 
 data Pair = Pair Term Code
-            deriving Show
 
 ap :: Code -> Code -> Code
 ap (Lam f) t = f t
-ap t1 t2 = App t1 t2
+ap (Cons (S Z, f)) t = f t
+ap (Cons (S x, f)) t = Cons (x, f t)
+ap (Cons (C, (c, l))) t = Cons (C, (c, l ++ [t]))
 
 convertible :: Int -> Code -> Code -> ()
 convertible n t1 t2 | conv n t1 t2 = ()
                     | otherwise = throw $ ConvError (prettyCode n t1) (prettyCode n t2)
   where conv n (Var x) (Var x') = x == x'
-        conv n (Con c) (Con c') = c == c'
+        conv n (Cons c) (Cons c') = convf n c c'
         conv n (Lam t) (Lam t') =
           conv (n + 1) (t (Var n)) (t' (Var n))
         conv n (Pi ty1 ty2) (Pi ty3 ty4) =
           conv n ty1 ty3 && conv (n + 1) (ty2 (Var n)) (ty4 (Var n))
-        conv n (App t1 t2) (App t3 t4) =
-          conv n t1 t3 && conv n t2 t4
         conv n Type Type = True
         conv n Kind Kind = True
         conv n _ _ = False
+        convf :: forall x y. Int -> (F x, x) -> (F y, y) -> Bool
+        convf n (C, (c, as)) (C, (c', as')) | length as == length as' =
+            c == c' && and (zipWith (conv n) as as')
+        convf n (Z, c) (Z, c') = conv n c c'
+        convf n (S x, f) (S x', f') = convf (n + 1) (x, f (Var n)) (x', f' (Var n))
+        convf n _ _ = False
 
 bbox, sbox :: Term -> Code -> Code -> Term
 
@@ -162,12 +169,14 @@ stop t = do
 -- Pretty printing.
 
 prettyCode n (Var x) = text (show x)
-prettyCode n (Con c) = text (show c)
+prettyCode n (Cons c) = prettyCons n c
+    where prettyCons :: forall x. Int -> (F x, x) -> Doc
+          prettyCons n (C, (c, as)) = parens (text (show c) <+> hsep (map (prettyCode n) as))
+          prettyCons n (Z, c) = prettyCode n c
+          prettyCons n (S x, f) = prettyCons (n + 1) (x, f (Var n))
 prettyCode n (Lam f) =
     parens (int n <+> text "=>" <+> prettyCode (n + 1) (f (Var n)))
 prettyCode n (Pi ty1 ty2) =
     parens (int n <+> colon <+> prettyCode n ty1 <+> text "->" <+> prettyCode (n + 1) (ty2 (Var n)))
-prettyCode n (App t1 t2) =
-    parens (prettyCode n t1 <+> prettyCode n t2)
 prettyCode n Type = text "Type"
 prettyCode n Kind = text "Kind"

@@ -46,7 +46,7 @@ library
                        bytestring >= 0.9.1.0,
                        wl-pprint >= 1.0
   extensions:          DeriveDataTypeable, PatternGuards, FlexibleInstances,
-                       RankNTypes
+                       RankNTypes, GADTs
   ghc-options:         -fwarn-unused-binds -fwarn-unused-imports
 
 executable dedukti
