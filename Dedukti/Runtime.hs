@@ -87,7 +87,7 @@ var n = Cons (C, (B.pack ("var"++show n), []))
 
 ap :: Code -> Code -> Code
 ap (Lam f) t = f t
-ap (Cons (C, (c, l))) t = Cons (C, (c, l ++ [t]))
+ap (Cons (C, (c, l))) t = Cons (C, (c, t:l))
 ap (Cons (U, f)) t = f t
 ap (Cons (S x, f)) t = Cons (x, f t)
 

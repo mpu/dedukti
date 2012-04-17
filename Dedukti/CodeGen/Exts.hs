@@ -134,7 +134,7 @@ pattern :: Em Env -> Em Expr -> Hs.Pat
 pattern env (V x _) | x `isin` env = Hs.pvar (varName (x .$ "c"))
 pattern env expr = unapply expr (\(V x _) xs _ -> conpat x xs)
     where con = Hs.strP . show . pretty
-          pats = Hs.PList . map (pattern env)
+          pats = Hs.PList . reverse . map (pattern env)
           conpat x xs = Hs.metaConPat "Cons" [Hs.pTuple [Hs.metaConPat "C" [], Hs.pTuple [con x, pats xs]]]
 
 -- | Turn an expression into object code with types erased.
