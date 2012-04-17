@@ -11,6 +11,7 @@ import qualified Dedukti.Rule as Rule
 import qualified Language.Lua as Lua
 import Language.Lua.QQ
 import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.Stream as Stream
 import Text.PrettyPrint.Leijen (renderPretty, displayS)
 
 
@@ -32,20 +33,19 @@ data Record = Rec { rec_id :: Qid
 instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
-    emit rs@(RS x ty rules) = Rec x (length rules) (xcode:xterm++xrules)
+    emit rs@(RS x ty rules) = Rec x (length rules) (xcode ++ xterm ++ xrules)
         where (tyn, tn, cn) = (lname (x .$ "ty"), termName x, codeName x)
-              xcode = let c = ruleCode x rules in [luas| local `cn  = $c; |]
+              xcode = [ [luas| local `cn; |], [luas| `cn = $c; |] ]
+                  where c = ruleCode variables x rules
               xterm =
-                let tycode = code ty
-                    tydef = [luas| local `tyn = $tycode; |]
-                    tyterm = term ty
-                    tytdef = [luas| local ty = $tyterm; |]
-                    startm = Lua.EString $ "Checking type of " ++ show (pretty (unqualify x)) ++ "."
-                    endm = Lua.EString $ "Type of " ++ show (pretty (unqualify x)) ++ " OK."
-                in [ [luas| print($startm); |]
-                   , tydef, tytdef, [luas| chksort(ty); |]
-                   , [luas| local `tn = mkbox(`cn, `tyn); |]
-                   , [luas| print($endm); |] ]
+                  let tycode = code ty; tyterm = term ty
+                      startm = Lua.EString $ "Checking type of " ++ show (pretty (unqualify x)) ++ "."
+                      endm = Lua.EString $ "Type of " ++ show (pretty (unqualify x)) ++ " OK."
+                  in [ [luas| print($startm); |]
+                     , [luas| local `tyn; |], [luas| `tyn = $tycode; |]
+                     , [luas| chksort($tyterm); |]
+                     , [luas| local `tn = { tk = tbox; tbox = { `cn, `tyn } }; |]
+                     , [luas| print($endm); |] ]
               xrules = [] -- zipWith checkr [1..] rules
               checkr n tr@(env :@ l :--> r) = undefined
 
@@ -57,21 +57,25 @@ instance CodeGen Record where
 -- | Compile a set of rules to a Lua term, here we use the
 -- Dedukti.CodeGen.Match module to compile the eventual pattern
 -- matching defined by the set of rules.
-ruleCode :: Id Record -> [Em TyRule] -> Lua.Exp
-ruleCode x [] = constant x
-ruleCode x rs | pmat <- mkPMat rs =
-    undefined -- XXX
+ruleCode :: Stream.Stream String -> Id Record -> [Em TyRule] -> Lua.Exp
+ruleCode _ x [] = constant x
+ruleCode ns x rs =
+    let vars = Stream.take (Rule.arity (head rs)) ns
+        body = genDTree $ M.compile (map M.Var vars) $ mkPMat rs
+        mkabs v s = let fun = Lua.EFun [Lua.Name v] $ Lua.Block [s]
+                    in [luas| return { ck = clam; clam = $fun } |]
+    in case foldr mkabs body vars of Lua.Ret e -> e
 
 -- | Convert a decision tree to valid Lua code.
-genDTree :: M.DTree (Em Expr) (Id Record) -> Lua.Stat
+genDTree :: M.DTree (Em Expr) String (Id Record) -> Lua.Stat
 genDTree M.Fail = [luas| error("Pattern matching failure."); |]
 genDTree (M.Match e) | c <- code e = [luas| return $c; |]
 genDTree (M.Switch pth ch) = go [] ch $ Lua.EPre $ Lua.Field (access pth) (Lua.Name "ccon")
-    where access (M.Var v) = Lua.Var $ codeName v
+    where access (M.Var v) = Lua.Var $ Lua.Name v
           access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "capp")) n
           go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree dt]
           go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree dt]):cs) ch x
-              where lc = Lua.EString $ xencode "_" $ M.c_id c
+              where lc = Lua.EString $ show $ pretty $ M.c_id c
                     cond = [luae| $x == $lc |]
 
 -- | Create a pattern matrix from a list of patterns, the created pattern
@@ -80,7 +84,7 @@ mkPMat :: [Em TyRule] -> M.PMat (Em Expr) (Id Record)
 mkPMat = map (\r@(e :@ _ :--> rhs) -> (map (mkpat e) (Rule.patterns r), rhs))
     where mkpat e (V x _) | x `isin` e = M.PGlob
           mkpat e t = unapply t (\(V c _) ps _ -> patCon e c ps)
-          patCon e c ps = M.PCon (M.Con c $ length ps) (map (mkpat e) ps)
+          patCon e c = foldl (\p x -> M.PCon (M.Con (qid "@") 2) [p, mkpat e x]) (M.PCon (M.Con c 0) [])
 
 -- | Turn a qualified id into a lua constant
 constant x = [luae| { ck = ccon; ccon = $s } |]
@@ -137,3 +141,6 @@ codeName = lname . (.$ "c")
 
 -- | Construct a Lua name to store terms.
 termName = lname . (.$ "t")
+
+-- | Produce a set of variables y1, ..., yn
+variables = Stream.unfold (\i -> ('y':show i, i + 1)) 0
