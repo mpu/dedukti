@@ -101,12 +101,12 @@ xencode qid =
                       | otherwise = B.singleton x
 
 function :: Em RuleSet -> Hs.Decl
-function (RS x _ []) = Hs.nameBind (*) (varName (x .$ "c")) (constant x)
+function (RS x _ []) = Hs.nameBind (*) (varName (x .$ "c")) [hs| Cons (C, ($(constant x), [])) |]
 function (RS x _ rs) = Hs.sfun (*) (varName (x .$ "c")) [] (Hs.UnGuardedRhs rhs) (Hs.binds [f])
     where n = Rule.arity (head rs)
-          pats = Stream.take n variables
-          occs = map Hs.var pats
-          rhs = foldr (\x y -> [hs| Lam (\((x)) -> $y) |]) (Hs.metaFunction "__" occs) pats
+          rhs = if n > 0 then [hs| Cons ($(a n), rule) |] else [hs| rule |]
+                where a 1 = [hs| U |]
+                      a n = [hs| S $(a $ n - 1) |]
           f | n > 0     = Hs.FunBind (map clause rs ++ [defaultClause x n])
             | otherwise = Hs.FunBind (map clause rs)
 
@@ -114,9 +114,9 @@ clause :: Em TyRule -> Hs.Match
 clause rule =
     let (lrule@(env :@ _ :--> rhs), constraints) = Rule.linearize qids rule
     in if null constraints
-       then Hs.Match (*) (Hs.name "__") (map (pattern env) (Rule.patterns lrule))
+       then Hs.Match (*) (Hs.name "rule") (map (pattern env) (Rule.patterns lrule))
             Nothing (Hs.UnGuardedRhs (code rhs)) Hs.noBinds
-       else Hs.Match (*) (Hs.name "__") (map (pattern env) (Rule.patterns lrule))
+       else Hs.Match (*) (Hs.name "rule") (map (pattern env) (Rule.patterns lrule))
             Nothing (Hs.GuardedRhss [Hs.GuardedRhs (*) (guards constraints) (code rhs)]) Hs.noBinds
     where guards = let tt = Hs.pApp (Hs.name "()") []
                    in map (\(x, x') -> Hs.Generator (*) tt [hs| convertible 0 $(var (x .$ "c")) $(var (x' .$ "c")) |])
@@ -124,19 +124,18 @@ clause rule =
 
 defaultClause :: Id Record -> Int -> Hs.Match
 defaultClause x n =
-    Hs.Match (*) (Hs.name "__") (Stream.take n (Stream.map Hs.pvar variables)) Nothing
-          (Hs.UnGuardedRhs (foldl' (\e x -> [hs| App $e $x |]) (constant x) (Stream.take n (Stream.map Hs.var variables)))) Hs.noBinds
+    let vs = Stream.take n variables in
+    Hs.Match (*) (Hs.name "rule") (map Hs.pvar vs) Nothing
+             (Hs.UnGuardedRhs [hs| Cons (C, ($(constant x), $(Hs.listE $ map Hs.var vs))) |]) Hs.noBinds
 
-constant c = [hs| Con $(Hs.strE $ show $ pretty c) |]
+constant c = Hs.strE $ show $ pretty c
 
 pattern :: Em Env -> Em Expr -> Hs.Pat
 pattern env (V x _) | x `isin` env = Hs.pvar (varName (x .$ "c"))
-pattern env expr = unapply expr (\(V x _) xs _ -> primAppsP x (map (pattern env) xs))
-
--- | Build a pattern matching constant.
-primConP c = Hs.PParen (Hs.pApp (Hs.name "Con") [Hs.strP (show (pretty c))])
-primAppP t1 t2 = Hs.PParen (Hs.pApp (Hs.name "App") [t1, t2])
-primAppsP c = foldl' primAppP (primConP c)
+pattern env expr = unapply expr (\(V x _) xs _ -> conpat x xs)
+    where con = Hs.strP . show . pretty
+          pats = Hs.PList . map (pattern env)
+          conpat x xs = Hs.metaConPat "Cons" [Hs.pTuple [Hs.metaConPat "C" [], Hs.pTuple [con x, pats xs]]]
 
 -- | Turn an expression into object code with types erased.
 code :: Em Expr -> Hs.Exp

@@ -18,7 +18,7 @@
 -- inference function.
 
 module Dedukti.Runtime
-    ( Code(..), Term(..), Pair(..), ap
+    ( F(..), Code(..), Term(..), Pair(..), ap
     , convertible
     , bbox, sbox
     , start, stop
@@ -64,12 +64,11 @@ instance Exception RuleError
 type Cons f = (F f, f)
 
 data F t where
-    C :: F (B.ByteString, [Code]) -- ^ Applied constructor.
-    Z :: F Code                   -- ^ Definition.
+    C :: F (B.ByteString, [Code]) -- ^ Applied constructor or variable.
+    U :: F (Code -> Code)         -- ^ Unary rewrite rule.
     S :: F x -> F (Code -> x)     -- ^ Rewrite rule.
 
-data Code = Var !Int
-          | forall f. Cons (Cons f)
+data Code = forall f. Cons (Cons f)
           | Lam !(Code -> Code)
           | Pi Code !(Code -> Code)
           | Type
@@ -84,29 +83,30 @@ data Term = TLam !(Maybe Term) !(Pair -> Term)
 
 data Pair = Pair Term Code
 
+var n = Cons (C, (B.pack ("var"++show n), []))
+
 ap :: Code -> Code -> Code
 ap (Lam f) t = f t
-ap (Cons (S Z, f)) t = f t
-ap (Cons (S x, f)) t = Cons (x, f t)
 ap (Cons (C, (c, l))) t = Cons (C, (c, l ++ [t]))
+ap (Cons (U, f)) t = f t
+ap (Cons (S x, f)) t = Cons (x, f t)
 
 convertible :: Int -> Code -> Code -> ()
 convertible n t1 t2 | conv n t1 t2 = ()
                     | otherwise = throw $ ConvError (prettyCode n t1) (prettyCode n t2)
-  where conv n (Var x) (Var x') = x == x'
-        conv n (Cons c) (Cons c') = convf n c c'
+  where conv n (Cons c) (Cons c') = convf n c c'
         conv n (Lam t) (Lam t') =
-          conv (n + 1) (t (Var n)) (t' (Var n))
+          conv (n + 1) (t (var n)) (t' (var n))
         conv n (Pi ty1 ty2) (Pi ty3 ty4) =
-          conv n ty1 ty3 && conv (n + 1) (ty2 (Var n)) (ty4 (Var n))
+          conv n ty1 ty3 && conv (n + 1) (ty2 (var n)) (ty4 (var n))
         conv n Type Type = True
         conv n Kind Kind = True
         conv n _ _ = False
         convf :: forall x y. Int -> (F x, x) -> (F y, y) -> Bool
         convf n (C, (c, as)) (C, (c', as')) | length as == length as' =
             c == c' && and (zipWith (conv n) as as')
-        convf n (Z, c) (Z, c') = conv n c c'
-        convf n (S x, f) (S x', f') = convf (n + 1) (x, f (Var n)) (x', f' (Var n))
+        convf n (U, f) (U, f') = conv (n + 1) (f (var n)) (f' (var n))
+        convf n (S x, f) (S x', f') = convf (n + 1) (x, f (var n)) (x', f' (var n))
         convf n _ _ = False
 
 bbox, sbox :: Term -> Code -> Code -> Term
@@ -121,10 +121,10 @@ box sort ty ty_code obj_code
     | () <- check 0 ty sort = Box ty_code obj_code
     | otherwise = throw SortError
 
-mkpair n ty = Pair (Box ty (Var n)) (Var n)
+mkpair n ty = Pair (Box ty (var n)) (var n)
 
 check :: Int -> Term -> Code -> ()
-check n (TLam _ f) (Pi a f') = check (n + 1) (f (mkpair n a)) (f' (Var n))
+check n (TLam _ f) (Pi a f') = check (n + 1) (f (mkpair n a)) (f' (var n))
 check n (TPi (Box Type tya) f) ty = check (n + 1) (f (mkpair n tya)) ty
 check n (TLet (Pair t tc) f) ty
     | tyt <- synth n t = check (n + 1) (f (Pair (Box tyt tc) tc)) ty
@@ -168,15 +168,14 @@ stop t = do
 
 -- Pretty printing.
 
-prettyCode n (Var x) = text (show x)
 prettyCode n (Cons c) = prettyCons n c
     where prettyCons :: forall x. Int -> (F x, x) -> Doc
           prettyCons n (C, (c, as)) = parens (text (show c) <+> hsep (map (prettyCode n) as))
-          prettyCons n (Z, c) = prettyCode n c
-          prettyCons n (S x, f) = prettyCons (n + 1) (x, f (Var n))
+          prettyCons n (U, f) = prettyCode (n + 1) (f (var n))
+          prettyCons n (S x, f) = prettyCons (n + 1) (x, f (var n))
 prettyCode n (Lam f) =
-    parens (int n <+> text "=>" <+> prettyCode (n + 1) (f (Var n)))
+    parens (int n <+> text "=>" <+> prettyCode (n + 1) (f (var n)))
 prettyCode n (Pi ty1 ty2) =
-    parens (int n <+> colon <+> prettyCode n ty1 <+> text "->" <+> prettyCode (n + 1) (ty2 (Var n)))
+    parens (int n <+> colon <+> prettyCode n ty1 <+> text "->" <+> prettyCode (n + 1) (ty2 (var n)))
 prettyCode n Type = text "Type"
 prettyCode n Kind = text "Kind"

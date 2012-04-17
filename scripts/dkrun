@@ -12,4 +12,4 @@ main=$1
 shift 1
 
 echo "do t <- Dedukti.Runtime.start; main; Dedukti.Runtime.stop t
-      System.Posix.Process.exitImmediately (System.Exit.ExitFailure 1)" | ghci -x hs -XOverloadedStrings -fglasgow-exts -w $* $main
+      System.Posix.Process.exitImmediately (System.Exit.ExitFailure 1)" | ghci -x hs -XOverloadedStrings -XGADTs -fglasgow-exts -w $* $main
