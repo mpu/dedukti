@@ -15,28 +15,28 @@ data Con id = Con { c_id :: id,  c_arity :: Int }
               deriving (Show, Eq)
 
 -- | Path in terms, used to match.
-data Path id = Var id
-             | Access Int (Path id)
-               deriving (Show)
+data Path v = Var v
+            | Access Int (Path v)
+              deriving (Show)
 
 -- | A decision tree, it can be either a switch or the result of a
 -- successful match.
-data DTree r id = Switch (Path id) (Choice r id)
-                | Match r
-                | Fail
-                  deriving (Show)
+data DTree r v id = Switch (Path v) (Choice r v id)
+                  | Match r
+                  | Fail
+                    deriving (Show)
 
-data Choice r id = Case (Con id) (DTree r id) (Choice r id)
-                 | Default (DTree r id)
-                   deriving (Show)
+data Choice r v id = Case (Con id) (DTree r v id) (Choice r v id)
+                   | Default (DTree r v id)
+                     deriving (Show)
 
 -- | A pattern.
-data Pat r id = PCon (Con id) [Pat r id]
-              | PGlob
-                deriving (Show)
+data Pat id = PCon (Con id) [Pat id]
+            | PGlob
+              deriving (Show)
 
 -- | A pattern matrix.
-type PMat r id = [([Pat r id], r)]
+type PMat r id = [([Pat id], r)]
 
 pull :: Int -> [a] -> [a]
 pull n as | (a, as') <- go n as = a:as'
@@ -48,7 +48,7 @@ isGlob _     = False
 
 -- | Specialize a pattern matrix assuming that the first value matched
 -- has a certain @id@ as its head constructor.
-specialize :: Eq id => Con id -> PMat r id -> PMat r id
+specialize :: (Eq id) => Con id -> PMat r id -> PMat r id
 specialize c@(Con _ ar) ps = go =<< ps
     where go (((PCon c' l):ps), r) | c' == c = [(l ++ ps, r)]
           go (PGlob:ps, r) = [(replicate ar PGlob ++ ps, r)]
@@ -68,7 +68,7 @@ decomp n (p:ps) = map (`Access` p) (take n [1..]) ++ ps
 
 -- | Compile a pattern matrix into a good decision tree. No sharing is
 -- performed.
-compile :: (Eq id) => [Path id] -> PMat r id -> DTree r id
+compile :: (Eq id) => [Path v] -> PMat r id -> DTree r v id
 compile pth [] = Fail
 compile pth ((ps, r):_) | and (map isGlob ps) = Match r
 compile pth m@((ps, _):_) =
@@ -85,16 +85,16 @@ compile pth m@((ps, _):_) =
 
 block d = group $ nest 2 (lbrace <$> d) <$> rbrace
 
-instance (Pretty r, Pretty id) => Pretty (DTree r id) where
+instance (Pretty r, Pretty v, Pretty id) => Pretty (DTree r v id) where
     pretty (Switch path ch) = text "switch" <+> pretty path <+> block (pretty ch)
     pretty (Match r) = text "MATCH" <+> pretty r
     pretty Fail = text "FAIL"
 
-instance (Pretty id) => Pretty (Path id) where
+instance (Pretty v) => Pretty (Path v) where
     pretty (Var id) = pretty id
     pretty (Access n p) = pretty p <> dot <> pretty n
 
-instance (Pretty r, Pretty id) => Pretty (Choice r id) where
+instance (Pretty r, Pretty v, Pretty id) => Pretty (Choice r v id) where
     pretty (Case (Con c _) t ch) =
         text "case" <+> pretty c <+> text "->" <+> block (pretty t)
         <$> pretty ch
