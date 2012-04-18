@@ -26,28 +26,47 @@ type Code = Record
 -- | Compiled code is represented as a record containing a list
 -- of statements declaring and checking a rule or a set of rules.
 data Record = Rec { rec_id :: Qid
-                  , rec_rules :: Int
                   , rec_code :: [Lua.Stat] }
               deriving (Show)
 
 instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
-    emit rs@(RS x ty rules) = Rec x (length rules) (xcode ++ xterm ++ xrules)
-        where (tyn, tn, cn) = (lname (x .$ "ty"), termName x, codeName x)
-              xcode = [ [luas| local `cn; |], [luas| `cn = $c; |] ]
+    emit rs@(RS x ty rules) = Rec x (xcode ++ xterm ++ xchk)
+        where (tn, cn) = (termName x, codeName x)
+              xstr = show $ pretty $ unqualify x
+              xcode = [ [luas| `cn = $c; |] ]
                   where c = ruleCode variables x rules
-              xterm =
-                  let tycode = code ty; tyterm = term ty
-                      startm = Lua.EString $ "Checking type of " ++ show (pretty (unqualify x)) ++ "."
-                      endm = Lua.EString $ "Type of " ++ show (pretty (unqualify x)) ++ " OK."
-                  in [ [luas| print($startm); |]
-                     , [luas| `tyn = $tycode; |]
-                     , [luas| chksort($tyterm); |]
-                     , [luas| `tn = { tk = tbox, tbox = { `cn, `tyn } }; |]
-                     , [luas| print($endm); |] ]
-              xrules = [] -- zipWith checkr [1..] rules
-              checkr n tr@(env :@ l :--> r) = undefined
+              xterm = [ [luas| `tn = { tk = tbox, tbox = { `cn, $tycode } }; |] ]
+                  where tycode = code ty
+
+
+
+              xchk = [ Lua.Assign [(Lua.Var (chkName x), Lua.EFun [] (Lua.Block chkl))] ]
+                  where startm = Lua.EString $ "Checking " ++ xstr ++ "..."
+                        endm = Lua.EString $ "Done checking " ++ xstr ++ "."
+                        tyterm = term ty
+                        chkl = enclose startm endm $
+                               [luas| chksort($tyterm); |] : zipWith checkr [1..] rules
+
+
+
+              checkr n tr@(e :@ l :--> r) = Lua.Do $ Lua.Block $ chkrule
+                  where startm = Lua.EString $ "Checking rule " ++ show n ++ "..."
+                        endm = Lua.EString $ "Done checking rule " ++ show n ++ "."
+                        Bundle chkenv = coalesce [ emit (RS id ty []) | (id ::: ty) <- env_bindings e ]
+                        locals = if null (env_bindings e) then []
+                                 else [ Lua.Bind $
+                                        do (n ::: _) <- env_bindings e
+                                           [ (f n, Lua.ENil) | f <- [codeName, termName, chkName] ] ]
+                        chkrule = enclose startm endm $
+                                  locals ++ chkenv ++
+                                  [ [luas| print("Environment processed, checking rule."); |]
+                                  , [luas| local tyl = synth($lt); |]
+                                  , [luas| check(0, $rt, tyl); |] ]
+                        lt = term l; rt = term r
+
+              enclose s e l = [luas| print($s) |] : l ++ [ [luas| print($e) |] ]
 
     coalesce recs = Bundle $ concatMap rec_code recs
 
@@ -143,6 +162,10 @@ codeName = lname . (.$ "c")
 
 -- | Construct a Lua name to store terms.
 termName = lname . (.$ "t")
+
+-- | Construct a Lua name to store the checking function of
+-- a term.
+chkName x = Lua.Name $ "chk_" ++ show (pretty (unqualify x))
 
 -- | Produce a set of variables y1, ..., yn
 variables = Stream.unfold (\i -> ('y':show i, i + 1)) 0
