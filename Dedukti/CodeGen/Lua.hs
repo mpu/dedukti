@@ -68,7 +68,8 @@ instance CodeGen Record where
 
               enclose s e l = [luas| print($s) |] : l ++ [ [luas| print($e) |] ]
 
-    coalesce recs = Bundle $ concatMap rec_code recs
+    coalesce recs = Bundle $ concatMap rec_code recs ++ chks
+        where chks = [ [luas| `f(); |] | f <- map (chkName . rec_id) recs ]
 
     serialize mod deps (Bundle stats) =
         B.pack $ displayS (renderPretty 0.8 120 $ pretty stats) ""
