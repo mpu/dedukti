@@ -42,9 +42,9 @@ instance CodeGen Record where
                       startm = Lua.EString $ "Checking type of " ++ show (pretty (unqualify x)) ++ "."
                       endm = Lua.EString $ "Type of " ++ show (pretty (unqualify x)) ++ " OK."
                   in [ [luas| print($startm); |]
-                     , [luas| local `tyn; |], [luas| `tyn = $tycode; |]
+                     , [luas| `tyn = $tycode; |]
                      , [luas| chksort($tyterm); |]
-                     , [luas| local `tn = { tk = tbox; tbox = { `cn, `tyn } }; |]
+                     , [luas| `tn = { tk = tbox, tbox = { `cn, `tyn } }; |]
                      , [luas| print($endm); |] ]
               xrules = [] -- zipWith checkr [1..] rules
               checkr n tr@(env :@ l :--> r) = undefined
@@ -60,23 +60,27 @@ instance CodeGen Record where
 ruleCode :: Stream.Stream String -> Id Record -> [Em TyRule] -> Lua.Exp
 ruleCode _ x [] = constant x
 ruleCode ns x rs =
-    let vars = Stream.take (Rule.arity (head rs)) ns
-        body = genDTree $ M.compile (map M.Var vars) $ mkPMat rs
-        mkabs v s = let fun = Lua.EFun [Lua.Name v] $ Lua.Block [s]
-                    in [luas| return { ck = clam; clam = $fun } |]
-    in case foldr mkabs body vars of Lua.Ret e -> e
+    let a = Rule.arity (head rs)
+        ae = Lua.ENum a
+        vars = Stream.take a ns
+        body = genDTree $ M.compile (map M.Var vars) (mkPMat rs)
+        r = Lua.EFun (map Lua.Name vars) (Lua.Block [body])
+    in if a > 0 then [luae| { ck = crule, crule = $r, arity = $ae, args = {} } |]
+                else case body of Lua.Ret e -> e
 
 -- | Convert a decision tree to valid Lua code.
 genDTree :: M.DTree (Em Expr) String (Id Record) -> Lua.Stat
 genDTree M.Fail = [luas| error("Pattern matching failure."); |]
 genDTree (M.Match e) | c <- code e = [luas| return $c; |]
-genDTree (M.Switch pth ch) = go [] ch $ Lua.EPre $ Lua.Field (access pth) (Lua.Name "ccon")
+genDTree (M.Switch pth ch) = go [] ch $ access pth
     where access (M.Var v) = Lua.Var $ Lua.Name v
-          access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "capp")) n
+          access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "args")) n
           go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree dt]
           go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree dt]):cs) ch x
               where lc = Lua.EString $ show $ pretty $ M.c_id c
-                    cond = [luae| $x == $lc |]
+                    xk = Lua.EPre $ Lua.Field x (Lua.Name "ck")
+                    xc = Lua.EPre $ Lua.Field x (Lua.Name "ccon")
+                    cond = [luae| ($xk == ccon) and ($xc == $lc) |]
 
 -- | Create a pattern matrix from a list of patterns, the created pattern
 -- matrix can be used with the CodeGen.Lua.Match module.
@@ -84,10 +88,10 @@ mkPMat :: [Em TyRule] -> M.PMat (Em Expr) (Id Record)
 mkPMat = map (\r@(e :@ _ :--> rhs) -> (map (mkpat e) (Rule.patterns r), rhs))
     where mkpat e (V x _) | x `isin` e = M.PGlob
           mkpat e t = unapply t (\(V c _) ps _ -> patCon e c ps)
-          patCon e c = foldl (\p x -> M.PCon (M.Con (qid "@") 2) [p, mkpat e x]) (M.PCon (M.Con c 0) [])
+          patCon e c ps = M.PCon (M.Con c (length ps)) $ map (mkpat e) ps
 
 -- | Turn a qualified id into a lua constant
-constant x = [luae| { ck = ccon; ccon = $s } |]
+constant x = [luae| { ck = ccon, ccon = $s, args = {} } |]
     where s = Lua.EString (show (pretty x))
 
 -- | Turn an expression into a code object.
@@ -103,7 +107,6 @@ code (A t1 t2 _) =
     let c1 = code t1; c2 = code t2
     in [luae| ap($c1, $c2) |]
 code Type = [luae| { ck = ctype } |]
-code _ = Lua.ENil
 
 -- | Turn an expression into a term object.
 term :: Em Expr -> Lua.Exp
@@ -126,7 +129,6 @@ term (A t1 t2 _) =
     let tt1 = term t1; tt2 = term t2
     in [luae| { tk = tapp; tapp = { $tt1, $tt2 } } |]
 term Type = [luae| { tk = ttype } |]
-term _ = Lua.ENil
 
 -- | Construct a variable expression from a name.
 lvar :: Lua.Name -> Lua.Exp
