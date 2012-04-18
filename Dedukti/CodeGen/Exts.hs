@@ -101,10 +101,10 @@ xencode qid =
                       | otherwise = B.singleton x
 
 function :: Em RuleSet -> Hs.Decl
-function (RS x _ []) = Hs.nameBind (*) (varName (x .$ "c")) [hs| Cons (C, ($(constant x), [])) |]
+function (RS x _ []) = Hs.nameBind (*) (varName (x .$ "c")) [hs| Con $(constant x) [] |]
 function (RS x _ rs) = Hs.sfun (*) (varName (x .$ "c")) [] (Hs.UnGuardedRhs rhs) (Hs.binds [f])
     where n = Rule.arity (head rs)
-          rhs = if n > 0 then [hs| Cons ($(a n), rule) |] else [hs| rule |]
+          rhs = if n > 0 then [hs| Rule ($(a n), rule) |] else [hs| rule |]
                 where a 1 = [hs| U |]
                       a n = [hs| S $(a $ n - 1) |]
           f | n > 0     = Hs.FunBind (map clause rs ++ [defaultClause x n])
@@ -126,7 +126,7 @@ defaultClause :: Id Record -> Int -> Hs.Match
 defaultClause x n =
     let vs = Stream.take n variables in
     Hs.Match (*) (Hs.name "rule") (map Hs.pvar vs) Nothing
-             (Hs.UnGuardedRhs [hs| Cons (C, ($(constant x), $(Hs.listE $ map Hs.var vs))) |]) Hs.noBinds
+             (Hs.UnGuardedRhs [hs| Con $(constant x) $(Hs.listE $ map Hs.var vs) |]) Hs.noBinds
 
 constant c = Hs.strE $ show $ pretty c
 
@@ -135,7 +135,7 @@ pattern env (V x _) | x `isin` env = Hs.pvar (varName (x .$ "c"))
 pattern env expr = unapply expr (\(V x _) xs _ -> conpat x xs)
     where con = Hs.strP . show . pretty
           pats = Hs.PList . reverse . map (pattern env)
-          conpat x xs = Hs.metaConPat "Cons" [Hs.pTuple [Hs.metaConPat "C" [], Hs.pTuple [con x, pats xs]]]
+          conpat x xs = Hs.metaConPat "Con" [con x, pats xs]
 
 -- | Turn an expression into object code with types erased.
 code :: Em Expr -> Hs.Exp

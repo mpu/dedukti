@@ -18,7 +18,7 @@
 -- inference function.
 
 module Dedukti.Runtime
-    ( F(..), Code(..), Term(..), Pair(..), ap
+    ( R(..), Code(..), Term(..), Pair(..), ap
     , convertible
     , bbox, sbox
     , start, stop
@@ -61,14 +61,14 @@ instance Exception RuleError
 
 -- Convertible and static terms.
 
-type Cons f = (F f, f)
+type Rule f = (R f, f)
 
-data F t where
-    C :: F (B.ByteString, [Code]) -- ^ Applied constructor or variable.
-    U :: F (Code -> Code)         -- ^ Unary rewrite rule.
-    S :: F x -> F (Code -> x)     -- ^ Rewrite rule.
+data R t where
+    U :: R (Code -> Code)         -- ^ Unary rewrite rule.
+    S :: R x -> R (Code -> x)     -- ^ Rewrite rule.
 
-data Code = forall f. Cons (Cons f)
+data Code = forall f. Rule (Rule f)
+          | Con !B.ByteString [Code]
           | Lam !(Code -> Code)
           | Pi Code !(Code -> Code)
           | Type
@@ -83,18 +83,20 @@ data Term = TLam !(Maybe Term) !(Pair -> Term)
 
 data Pair = Pair Term Code
 
-var n = Cons (C, (B.pack ("var"++show n), []))
+var n = Con (B.pack ("var"++show n)) []
 
 ap :: Code -> Code -> Code
 ap (Lam f) t = f t
-ap (Cons (C, (c, l))) t = Cons (C, (c, t:l))
-ap (Cons (U, f)) t = f t
-ap (Cons (S x, f)) t = Cons (x, f t)
+ap (Con c l) t = Con c (t:l)
+ap (Rule (U, f)) t = f t
+ap (Rule (S x, f)) t = Rule (x, f t)
 
 convertible :: Int -> Code -> Code -> ()
 convertible n t1 t2 | conv n t1 t2 = ()
                     | otherwise = throw $ ConvError (prettyCode n t1) (prettyCode n t2)
-  where conv n (Cons c) (Cons c') = convf n c c'
+  where conv n (Con c l) (Con c' l') | length l == length l' =
+            c == c' && and (zipWith (conv n) l l')
+        conv n (Rule r) (Rule r') = convr n r r'
         conv n (Lam t) (Lam t') =
           conv (n + 1) (t (var n)) (t' (var n))
         conv n (Pi ty1 ty2) (Pi ty3 ty4) =
@@ -102,12 +104,10 @@ convertible n t1 t2 | conv n t1 t2 = ()
         conv n Type Type = True
         conv n Kind Kind = True
         conv n _ _ = False
-        convf :: forall x y. Int -> (F x, x) -> (F y, y) -> Bool
-        convf n (C, (c, as)) (C, (c', as')) | length as == length as' =
-            c == c' && and (zipWith (conv n) as as')
-        convf n (U, f) (U, f') = conv (n + 1) (f (var n)) (f' (var n))
-        convf n (S x, f) (S x', f') = convf (n + 1) (x, f (var n)) (x', f' (var n))
-        convf n _ _ = False
+        convr :: forall x y. Int -> Rule x -> Rule y -> Bool
+        convr n (U, f) (U, f') = conv (n + 1) (f (var n)) (f' (var n))
+        convr n (S x, f) (S x', f') = convr (n + 1) (x, f (var n)) (x', f' (var n))
+        convr n _ _ = False
 
 bbox, sbox :: Term -> Code -> Code -> Term
 
@@ -168,11 +168,11 @@ stop t = do
 
 -- Pretty printing.
 
-prettyCode n (Cons c) = prettyCons n c
-    where prettyCons :: forall x. Int -> (F x, x) -> Doc
-          prettyCons n (C, (c, as)) = parens (text (show c) <+> hsep (map (prettyCode n) as))
-          prettyCons n (U, f) = prettyCode (n + 1) (f (var n))
-          prettyCons n (S x, f) = prettyCons (n + 1) (x, f (var n))
+prettyCode n (Con c l) = parens (text (show c) <+> hsep (reverse $ map (prettyCode n) l))
+prettyCode n (Rule r) = prettyRule n r
+    where prettyRule :: forall x. Int -> Rule x -> Doc
+          prettyRule n (U, f) = prettyCode (n + 1) (f (var n))
+          prettyRule n (S x, f) = prettyRule (n + 1) (x, f (var n))
 prettyCode n (Lam f) =
     parens (int n <+> text "=>" <+> prettyCode (n + 1) (f (var n)))
 prettyCode n (Pi ty1 ty2) =
