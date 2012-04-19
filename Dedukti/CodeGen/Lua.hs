@@ -74,25 +74,25 @@ instance CodeGen Record where
 -- Dedukti.CodeGen.Match module to compile the eventual pattern
 -- matching defined by the set of rules.
 ruleCode :: Stream.Stream String -> Id Record -> [Em TyRule] -> Lua.Exp
-ruleCode _ x [] = constant x
+ruleCode _ x [] = constant x []
 ruleCode ns x rs =
     let a = Rule.arity (head rs)
         ae = Lua.ENum a
         vars = Stream.take a ns
-        body = genDTree $ M.compile (map M.Var vars) (mkPMat rs)
+        body = genDTree (constant x vars) $ M.compile (map M.Var vars) (mkPMat rs)
         r = Lua.EFun (map Lua.Name vars) (Lua.Block [body])
     in if a > 0 then [luae| { ck = crule, crule = $r, arity = $ae, args = {} } |]
                 else case body of Lua.Ret e -> e
 
 -- | Convert a decision tree to valid Lua code.
-genDTree :: M.DTree (Em Expr) String (Id Record) -> Lua.Stat
-genDTree M.Fail = [luas| error("Pattern matching failure."); |]
-genDTree (M.Match e) | c <- code e = [luas| return $c; |]
-genDTree (M.Switch pth ch) = go [] ch $ access pth
+genDTree :: Lua.Exp -> M.DTree (Em Expr) String (Id Record) -> Lua.Stat
+genDTree d M.Fail = [luas| return $d; |]
+genDTree _ (M.Match e) | c <- code e = [luas| return $c; |]
+genDTree d (M.Switch pth ch) = go [] ch $ access pth
     where access (M.Var v) = Lua.Var $ Lua.Name v
           access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "args")) n
-          go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree dt]
-          go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree dt]):cs) ch x
+          go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree d dt]
+          go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree d dt]):cs) ch x
               where lc = Lua.EString $ show $ pretty $ M.c_id c
                     xk = Lua.EPre $ Lua.Field x (Lua.Name "ck")
                     xc = Lua.EPre $ Lua.Field x (Lua.Name "ccon")
@@ -107,8 +107,9 @@ mkPMat = map (\r@(e :@ _ :--> rhs) -> (map (mkpat e) (Rule.patterns r), rhs))
           patCon e c ps = M.PCon (M.Con c (length ps)) $ map (mkpat e) ps
 
 -- | Turn a qualified id into a lua constant
-constant x = [luae| { ck = ccon, ccon = $s, args = {} } |]
+constant x vs = [luae| { ck = ccon, ccon = $s, args = $args } |]
     where s = Lua.EString (show (pretty x))
+          args = Lua.ETable $ [ Lua.TExp [luae| `v |] | v <- map Lua.Name vs ]
 
 -- | Turn an expression into a code object.
 code :: Em Expr -> Lua.Exp
