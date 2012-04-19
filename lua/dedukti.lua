@@ -1,58 +1,66 @@
 -- Dedukti LUA basic runtime.
 
 -- Terms can be of 6 kinds, either a lambda, a product, an
--- application, type, a user created box, or a box.
+-- application, type, or a box.
 --
 -- In a term object, two fields must be present, 'tk',
 -- indicating the kind of the term, and a field with
 -- the name of the kind.
 
--- Code can be of 7 kinds, either a lambda, a product, an
--- application, type, kind, a variable, a constant.
+-- Code can be of 6 kinds, either a lambda, a product, a
+-- rule, a constant, type, or kind.
 
-tlam, tpi, tapp, ttype, tubox, tbox =       -- Possible tk
-  'tlam', 'tpi', 'tapp', 'ttype', 'tubox', 'tbox';
+tlam, tpi, tapp, ttype, tbox =         -- Possible tk
+  'tlam', 'tpi', 'tapp', 'ttype', 'tbox';
 
-clam, cpi, capp, ctype, ckind, cvar, ccon = -- Possible ck
-  'clam', 'cpi', 'capp', 'ctype', 'ckind', 'cvar', 'ccon';
+clam, cpi, crule, ccon, ctype, ckind = -- Possible ck
+  'clam', 'cpi', 'crule', 'ccon', 'ctype', 'ckind'
 
-function mkcode(kind, ob) -- Building code.
-  assert(kind == clam or kind == cpi or kind == capp
-      or kind == ctype or kind == ckind or kind == cvar
-      or kind == ccon); -- I miss type safety.
-  return { ck = kind, [kind] = ob };
+function var(n)
+  return { ck = ccon, ccon = "var" .. n, args = {} };
+end
+
+function box(ty, t)
+  return { tk = tbox, tbox = { ty, t } };
 end
 
 function ap(a, b)
   assert(a.ck and b.ck);
-  if a.ck == clam then
+  if a.ck == clam then      -- Apply a lambda.
     return a.clam(b);
-  else
-    return mkcode(capp, { a, b });
+  elseif a.ck == crule then -- Apply a rewrite rule.
+    table.insert(a.args, b);
+    if #a.args == a.arity then
+      return a.crule(unpack(a.args));
+    else
+      return a;
+    end
+  elseif a.ck == ccon then  -- Apply a constant.
+    table.insert(a.args, b);
+    return a;
   end
 end
 
-function obj(t)
-  assert(t.tk and t.tk == tbox);
-  return t.tbox[2];
-end
-
-function convertible(a, b)
+function conv(a, b)
   local function conv(n, a, b)
     assert(a.ck and b.ck);
-    local v = mkcode(cvar, n);
-    if a.ck == cvar and b.ck == cvar then
-      return a.cvar == b.cvar;
-    elseif a.ck == ccon and b.ck == ccon then
-      return a.ccon == b.ccon;
-    elseif a.ck == clam and b.ck == clam then
-      return conv(n+1, a.clam(v), b.clam(v));
+    local v = var(n);
+    if a.ck == clam and b.ck == clam then
+      return conv(n+1, ap(a, v), ap(b, v));
     elseif a.ck == cpi and b.ck == cpi then
       return conv(n, a.cpi[1], b.cpi[1])
          and conv(n+1, a.cpi[2](v), b.cpi[2](v));
-    elseif a.ck == capp and b.ck == capp then
-      return conv(n, a.cpi[1], b.cpi[1])
-         and conv(n, a.cpi[2], b.cpi[2]);
+    elseif a.ck == crule and b.ck == crule
+       and a.arity == b.arity and #a.args == #b.args then
+      return conv(n+1, ap(a, v), ap(b, v));
+    elseif a.ck == ccon and b.ck == ccon
+       and a.ccon == b.ccon and #a.args == #b.args then
+      for i=1,#a.args do
+        if not conv(n, a.args[i], b.args[i]) then
+          return false;
+        end
+      end
+      return true;
     elseif a.ck == ctype and b.ck == ctype then
       return true;
     elseif a.ck == ckind and b.ck == ckind then
@@ -64,10 +72,6 @@ function convertible(a, b)
   return conv(0, a, b);
 end
 
-function box(cty, cv) -- Creates a Term box.
-  return { tk = tbox, tbox = { cty, cv } };
-end
-
 --[[ Typechecking functions. ]]
 
 function synth(n, t)
@@ -76,35 +80,61 @@ function synth(n, t)
     return t.tbox[1];
   elseif t.tk == ttype then
     return { ck = ckind };
-  elseif t.tk == tapp and t.tapp[2].tk == tbox then
-    local b = t.tapp[2].tbox;
+  elseif t.tk == tapp then
     local c = synth(n, t.tapp[1]);
-    assert(c.ck == cpi and convertible(c.cpi[1], b[1])); -- This is totally ugly.
-    return c.cpi[2](b[2]);
-  elseif t.tk == tapp and t.tapp[2].tk == tubox then
-    local b = t.tapp[2].tubox;
-    local ty = synth(n, b[1]);
-    local c = synth(n, t.tapp[1]);
-    assert(c.ck == cpi and convertible(c.cpi[1], ty));
-    return c.cpi[2](b[2]);
-  elseif t.tk == tpi and t.tpi[1].tk == tbox
-     and t.tpi[1].tbox[1].tk == ttype then
-    local v = mkcode(cvar, n);
-    return synth(n+1, t.tpi[2](v));
+    assert(c.ck == cpi and check(n, t.tapp[2], c.cpi[1]));
+    return c.cpi[2](t.tapp[3]);
+  elseif t.tk == tpi then
+    local v = var(n);
+    return synth(n+1, t.tpi[2](box(t.tpi[1], v), v));
   else
     error("Type synthesis failed.");
   end
 end
 
-function check(n, t, c) -- t is a term, c is a type.
+function check(n, t, c)
   assert(t.tk and c.ck);
-  local v = mkcode(cvar, n);
   if t.tk == tlam and c.ck == cpi then
-    return check(n+1, t.tlam(box(c.cpi[1], v)), c.cpi[2](v))
+    return check(n+1, t.tlam[2](box(c.cpi[1], v), v), c.cpi[2](v))
   else
-    return convertible(synth(n, t), c);
+    return conv(synth(n, t), c);
   end
 end
 
-return 42;
--- vi: expandtab
+function chkabs(t, c)
+  assert(t.tk, c.ck);
+  if not check(0, t, { ck = ctype }) then
+    error("Type checking failed: Sort error.");
+  end
+  return c;
+end
+
+function chksort(t)
+  local c = synth(0, t);
+  if c.ck ~= ctype and c.ck ~= ckind then
+    error("Type checking failed: Sort error.");
+  end
+end
+
+--[[ Utility functions. ]]
+
+local indent = 0;
+local function shiftp(m)
+  print(string.rep("  ", indent) .. m)
+end
+
+function chkbeg(x)
+  shiftp("Checking \027[1m" .. x .. "\027[m...");
+  indent = indent + 1;
+end
+
+function chkmsg(x)
+  shiftp(x);
+end
+
+function chkend(x)
+  indent = indent - 1;
+  shiftp("Done checking \027[32m" .. x .. "\027[m.");
+end
+
+-- vi: expandtab: sw=2
