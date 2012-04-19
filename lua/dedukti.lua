@@ -66,6 +66,7 @@ function conv(a, b)
     elseif a.ck == ckind and b.ck == ckind then
       return true;
     else
+      print("Terms are not convertible: " .. strc(a) .. " " .. strc(b));
       return false;
     end
   end
@@ -95,7 +96,8 @@ end
 function check(n, t, c)
   assert(t.tk and c.ck);
   if t.tk == tlam and c.ck == cpi then
-    return check(n+1, t.tlam[2](box(c.cpi[1], v), v), c.cpi[2](v))
+    local v = var(n);
+    return check(n+1, t.tlam[2](box(c.cpi[1], v), v), c.cpi[2](v));
   else
     return conv(synth(n, t), c);
   end
@@ -141,6 +143,32 @@ end
 function chkend(x)
   indent = indent - 1;
   shiftp("Done checking \027[32m" .. x .. "\027[m.");
+end
+
+--[[ Debugging functions. ]]
+
+function strc(c)
+  local function f(n, c)
+    if c.ck == clam or c.ck == crule then
+      return "(\\" .. n .. ". " .. f(n+1, ap(c, var(n))) ..")";
+    elseif c.ck == cpi then
+      return "(Pi " .. n .. ":" .. f(n, c.cpi[1])
+          .. ". " .. f(n+1, c.cpi[2](var(n))) .. ")";
+    elseif c.ck == ccon then
+      local s = "(" .. c.ccon;
+      for i=1,#c.args do
+        s = s .. " " .. f(n, c.args[i]);
+      end
+      return s .. ")";
+    elseif c.ck == ctype then
+      return "Type"
+    elseif c.ck == ckind then
+      return "Kind"
+    else
+      return "!! not code !!"
+    end
+  end
+  return f(0, c);
 end
 
 -- vi: expandtab: sw=2
