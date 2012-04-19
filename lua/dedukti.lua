@@ -116,6 +116,12 @@ function chksort(t)
   end
 end
 
+function chk(t, c)
+  if not check(0, t, c) then
+    error("Type checking failed: Terms are not convertible.");
+  end
+end
+
 --[[ Utility functions. ]]
 
 local indent = 0;

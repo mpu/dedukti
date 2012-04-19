@@ -59,7 +59,7 @@ instance CodeGen Record where
                                   locals ++ chkenv ++
                                   [ [luas| chkmsg("Environment processed, checking rule."); |]
                                   , [luas| local tyl = synth(0, $lt); |]
-                                  , [luas| check(0, $rt, tyl); |] ]
+                                  , [luas| chk($rt, tyl); |] ]
                         lt = term l; rt = term r
 
               enclose s l = [luas| chkbeg($s) |] : l ++ [ [luas| chkend($s) |] ]
