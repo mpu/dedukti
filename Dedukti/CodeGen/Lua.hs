@@ -138,10 +138,10 @@ term (B (L x ty) t _) =
     in [luae| { tk = tlam; tlam = { $tyterm, function (`xt, `xc) return $tm; end } } |]
 term (B (x ::: ty) t _) =
     let (xt, xc) = (termName x, codeName x)
-        tyterm = if isVariable ty then term ty else [luae| chkabs($t, $c) |]
-                 where t = term ty; c = code ty
+        tyc = if isVariable ty then code ty else [luae| chkabs($t, $c) |]
+              where t = term ty; c = code ty
         tm = term t
-    in [luae| { tk = tpi; tpi = { $tyterm, function (`xt, `xc) return $tm; end } } |]
+    in [luae| { tk = tpi; tpi = { $tyc, function (`xt, `xc) return $tm; end } } |]
 term (A t1 t2 _) =
     let tt1 = term t1; tt2 = term t2; ct2 = code t2
     in [luae| { tk = tapp; tapp = { $tt1, $tt2, $ct2 } } |]
