@@ -37,36 +37,32 @@ instance CodeGen Record where
               xstr = show $ pretty $ unqualify x
               xcode = [ [luas| `cn = $c; |] ]
                   where c = ruleCode variables x rules
-              xterm = [ [luas| `tn = { tk = tbox, tbox = { `cn, $tycode } }; |] ]
+              xterm = [ [luas| `tn = { tk = tbox, tbox = { $tycode, `cn } }; |] ]
                   where tycode = code ty
 
 
 
-              xchk = [ Lua.Assign [(Lua.Var (chkName x), Lua.EFun [] (Lua.Block chkl))] ]
-                  where startm = Lua.EString $ "Checking " ++ xstr ++ "..."
-                        endm = Lua.EString $ "Done checking " ++ xstr ++ "."
-                        tyterm = term ty
-                        chkl = enclose startm endm $
+              xchk = [ Lua.BindFun (chkName x) [] (Lua.Block chkl) ]
+                  where tyterm = term ty
+                        chkl = enclose (Lua.EString xstr) $
                                [luas| chksort($tyterm); |] : zipWith checkr [1..] rules
 
 
 
               checkr n tr@(e :@ l :--> r) = Lua.Do $ Lua.Block $ chkrule
-                  where startm = Lua.EString $ "Checking rule " ++ show n ++ "..."
-                        endm = Lua.EString $ "Done checking rule " ++ show n ++ "."
-                        Bundle chkenv = coalesce [ emit (RS id ty []) | (id ::: ty) <- env_bindings e ]
+                  where Bundle chkenv = coalesce [ emit (RS id ty []) | (id ::: ty) <- env_bindings e ]
                         locals = if null (env_bindings e) then []
                                  else [ Lua.Bind $
                                         do (n ::: _) <- env_bindings e
                                            [ (f n, Lua.ENil) | f <- [codeName, termName, chkName] ] ]
-                        chkrule = enclose startm endm $
+                        chkrule = enclose (Lua.EString $ "rule " ++ show n) $
                                   locals ++ chkenv ++
-                                  [ [luas| print("Environment processed, checking rule."); |]
-                                  , [luas| local tyl = synth($lt); |]
+                                  [ [luas| chkmsg("Environment processed, checking rule."); |]
+                                  , [luas| local tyl = synth(0, $lt); |]
                                   , [luas| check(0, $rt, tyl); |] ]
                         lt = term l; rt = term r
 
-              enclose s e l = [luas| print($s) |] : l ++ [ [luas| print($e) |] ]
+              enclose s l = [luas| chkbeg($s) |] : l ++ [ [luas| chkend($s) |] ]
 
     coalesce recs = Bundle $ concatMap rec_code recs ++ chks
         where chks = [ [luas| `f(); |] | f <- map (chkName . rec_id) recs ]
@@ -141,13 +137,13 @@ term (B (L x ty) t _) =
     in [luae| { tk = tlam; tlam = { $tyterm, function (`xt, `xc) return $tm; end } } |]
 term (B (x ::: ty) t _) =
     let (xt, xc) = (termName x, codeName x)
-        tyterm = if isVariable ty then term ty else [luae| chkabs ($t, $c) |]
+        tyterm = if isVariable ty then term ty else [luae| chkabs($t, $c) |]
                  where t = term ty; c = code ty
         tm = term t
     in [luae| { tk = tpi; tpi = { $tyterm, function (`xt, `xc) return $tm; end } } |]
 term (A t1 t2 _) =
-    let tt1 = term t1; tt2 = term t2
-    in [luae| { tk = tapp; tapp = { $tt1, $tt2 } } |]
+    let tt1 = term t1; tt2 = term t2; ct2 = code t2
+    in [luae| { tk = tapp; tapp = { $tt1, $tt2, $ct2 } } |]
 term Type = [luae| { tk = ttype } |]
 
 -- | Construct a variable expression from a name.
