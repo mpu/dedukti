@@ -15,7 +15,7 @@ description:
 category:       Theorem Provers, Compilers/Interpreters
 license:        GPL
 license-file:   COPYING
-cabal-version:  >= 1.6.0
+cabal-version:  >= 1.8.0
 build-type:     Simple
 tested-with:    GHC ==6.10, GHC ==7.0.2
 data-files:     t/bug.dk
@@ -42,7 +42,9 @@ source-repository head
 
 library
   exposed-modules:     Dedukti.Runtime
-  build-depends:       time >= 1.1, unix >= 2.3
+  build-depends:       base >= 4, time >= 1.1, unix >= 2.3,
+                       bytestring >= 0.9.1.0,
+                       wl-pprint >= 1.0
   extensions:          DeriveDataTypeable, PatternGuards, FlexibleInstances,
                        RankNTypes
   ghc-options:         -fwarn-unused-binds -fwarn-unused-imports
@@ -93,7 +95,7 @@ executable dedukti
 test-suite smoke
   type: exitcode-stdio-1.0
   main-is: Test.hs
-  build-depends:       directory, filepath, process,
+  build-depends:       base, directory, filepath, process,
                        test-framework >= 0.2
   extensions:          DeriveDataTypeable, MultiParamTypeClasses, RecordWildCards
   ghc-options:         -fwarn-unused-binds -fwarn-unused-imports

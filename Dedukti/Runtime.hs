@@ -104,33 +104,35 @@ convertible n t1 t2 | conv n t1 t2 = ()
 
 bbox, sbox :: Term -> Code -> Code -> Term
 
--- | A big box holds terms of sort Type or Kind
-bbox = box [Type, Kind]
+-- | A big box holds terms of sort Kind.
+bbox = box Kind
 
 -- | A small box holds terms of sort Type.
-sbox = box [Type]
+sbox = box Type
 
-box sorts ty ty_code obj_code
-    | synth 0 ty `elem` sorts = Box ty_code obj_code
+box sort ty ty_code obj_code
+    | () <- check 0 ty sort = Box ty_code obj_code
     | otherwise = throw SortError
 
 mkpair n ty = Pair (Box ty (Var n)) (Var n)
 
 check :: Int -> Term -> Code -> ()
 check n (TLam _ f) (Pi a f') = check (n + 1) (f (mkpair n a)) (f' (Var n))
+check n (TPi (Box Type tya) f) ty = check (n + 1) (f (mkpair n tya)) ty
+check n (TLet (Pair t tc) f) ty
+    | tyt <- synth n t = check (n + 1) (f (Pair (Box tyt tc) tc)) ty
 check n t ty = convertible n (synth n t) ty
 
 synth :: Int -> Term -> Code
 synth n (Box ty _) = ty
-synth n (TPi (Box Type tya) f) = synth (n + 1) (f (mkpair n tya))
 synth n (TApp t1 (Pair t2 c2))
     | Pi tya f <- synth n t1
     , () <- check n t2 tya = f c2
-synth n (TLet (Pair t tc) f)
-    | ty <- synth n t = synth (n + 1) (f (Pair (Box ty tc) tc))
 synth n TType = Kind
 synth n (TLam (Just (Box Type ty)) f) =
     Pi ty (\xc -> synth (n + 1) (f (Pair (Box ty xc) xc)))
+synth n (TLet (Pair t tc) f)
+    | tyt <- synth n t = synth (n + 1) (f (Pair (Box tyt tc) tc))
 synth n t = throw SynthError
 
 checkDeclaration :: String -> a -> IO ()

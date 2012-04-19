@@ -32,6 +32,24 @@ checkOrdering rules = do
   mapM_ (\x -> when (length x > 1) (throw $ NonContiguousRules (head x))) $
         group $ sort $ map head $ group $ map Rule.headConstant rules
 
+newtype BadArity = BadArity Qid
+    deriving (Eq, Ord, Typeable)
+
+instance Show BadArity where
+    show (BadArity id) =
+        show (text "Some rules for" <+> pretty id <+> text "have different arities.")
+
+instance Exception BadArity
+
+-- | All rules for one constant must have the same arity.
+checkArity :: [TyRule Qid a] -> DkM ()
+checkArity rules = do
+    say Verbose $ text "Checking arity of rules ..."
+    mapM_ (\(l:ls) -> chk (Rule.headConstant l) (napps (Rule.head l)) ls)
+          $ Rule.group rules
+  where chk id n l = when (or (map ((/=) n . napps . Rule.head) l)) (throw $ BadArity id)
+        napps e = unapply e (\_ x _ -> length x)
+
 newtype BadPattern = BadPattern [Qid]
     deriving (Eq, Ord, Typeable)
 
