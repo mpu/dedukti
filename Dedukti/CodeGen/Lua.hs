@@ -54,7 +54,7 @@ instance CodeGen Record where
                         locals = if null (env_bindings e) then []
                                  else [ Lua.Bind $
                                         do (n ::: _) <- env_bindings e
-                                           [ (f n, Lua.ENil) | f <- [codeName, termName, chkName] ] ]
+                                           [ (f n, Lua.ENil) | f <- [codeName, termName ] ] ]
                         chkrule = enclose (Lua.EString $ "rule " ++ show n) $
                                   locals ++ chkenv ++
                                   [ [luas| chkmsg("Environment processed, checking rule."); |]
