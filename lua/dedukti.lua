@@ -24,20 +24,32 @@ function box(ty, t)
   return { tk = tbox, tbox = { ty, t } };
 end
 
+local function push(c, v)
+  local a = {};
+  for i=1,#c.args do
+    a[i] = c.args[i];
+  end
+  table.insert(a, v);
+  if c.ck == crule then
+    return { ck = crule, crule = c.crule, arity = c.arity, args = a };
+  else
+    return { ck = ccon, ccon = c.ccon, args = a };
+  end
+end
+
 function ap(a, b)
   assert(a.ck and b.ck);
   if a.ck == clam then      -- Apply a lambda.
     return a.clam(b);
   elseif a.ck == crule then -- Apply a rewrite rule.
-    table.insert(a.args, b);
-    if #a.args == a.arity then
-      return a.crule(unpack(a.args));
+    local c = push(a, b);
+    if #c.args == c.arity then
+      return c.crule(unpack(c.args));
     else
-      return a;
+      return c;
     end
   elseif a.ck == ccon then  -- Apply a constant.
-    table.insert(a.args, b);
-    return a;
+    return push(a, b);
   end
 end
 
