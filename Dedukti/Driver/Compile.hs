@@ -31,16 +31,21 @@ import Control.Applicative
 -- belonging to the global environment, from variables, which are
 -- locally bound in a term.
 selfQualify :: MName -> [Pa RuleSet] -> [Pa RuleSet]
-selfQualify mod rsets = let defs = Set.fromList (map rs_name rsets)
-                        in map (descend (f defs))
-                               (map (\RS{..} -> RS{rs_name = qualify mod rs_name, ..}) rsets)
-    where f defs (V x a) | Nothing <- provenance x
+selfQualify mod rss = let qualRule (env :@ r) = qualR defs [] (env_bindings env) r
+                          defs = Set.fromList (map rs_name rss)
+                      in map (\RS{..} -> RS (qualify mod rs_name)
+                                            (f defs rs_type)
+                                            (map qualRule rs_rules)) rss
+    where qualR defs qbs [] r = fromrBindings qbs :@ descend (f defs) r
+          qualR defs qbs ((x ::: t):bs) r =
+              qualR (Set.delete x defs) ((x ::: f defs t):qbs) bs r
+          f defs (V x a) | Nothing <- provenance x
                          , x `Set.member` defs = V (qualify mod x) %% a
           f defs (B (L x ty) t a) =
               B (L x (f defs `fmap` ty)) (f (Set.delete x defs) t) %% a
           f defs (B (x ::: ty) t a) =
               B (x ::: f defs ty) (f (Set.delete x defs) t) %% a
-          f defs t = descend (f defs) (t :: Pa Expr)
+          f defs t = descend (f defs) t
 
 -- | Read the interface file of each module name to collect the declarations
 -- exported by the module.
