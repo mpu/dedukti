@@ -29,6 +29,8 @@ data Record = Rec { rec_id :: Qid
                   , rec_code :: [Lua.Stat] }
               deriving (Show)
 
+data MatchBranch = MB [Lua.Name] [Lua.Exp] (Lua.Exp)
+
 instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
@@ -40,14 +42,10 @@ instance CodeGen Record where
               xterm = [luas| `tn = { tk = tbox, tbox = { $tycode, `cn } }; |]
                   where tycode = code ty
 
-
-
               xchk = Lua.BindFun (chkName x) [] (Lua.Block chkl)
                   where tyterm = term ty
                         chkl = enclose (Lua.EString xstr) $
                                [luas| chksort($tyterm); |] : zipWith checkr [1..] rules
-
-
 
               checkr n tr@(e :@ l :--> r) = Lua.Do $ Lua.Block $ chkrule
                   where Bundle chkenv = coalesce [ emit (RS id ty []) | (id ::: ty) <- env_bindings e ]
@@ -79,20 +77,22 @@ ruleCode ns x rs =
     let a = Rule.arity (head rs)
         ae = Lua.ENum a
         vars = Stream.take a ns
-        body = genDTree (constant x vars) $ M.compile (map M.Var vars) (mkPMat rs)
-        r = Lua.EFun (map Lua.Name vars) (Lua.Block [body])
+        body = genDTree (constant x vars) $ M.compile (map M.Var vars)
+                                          $ mkPMat (map (Lua.Var . Lua.Name) vars) rs
+        r = Lua.EFun (map Lua.Name vars) (Lua.Block body)
     in if a > 0 then [luae| { ck = clam, clam = $r, arity = $ae, args = {} } |]
-                else case body of Lua.Ret e -> e
+                else case head body of Lua.Ret e -> e
 
 -- | Convert a decision tree to valid Lua code.
-genDTree :: Lua.Exp -> M.DTree (Em Expr) String (Id Record) -> Lua.Stat
-genDTree d M.Fail = [luas| return $d; |]
-genDTree _ (M.Match e) | c <- code e = [luas| return $c; |]
-genDTree d (M.Switch pth ch) = go [] ch $ access pth
+genDTree :: Lua.Exp -> M.DTree MatchBranch String (Id Record) -> [Lua.Stat]
+genDTree d M.Fail = [ [luas| return $d; |] ]
+genDTree _ (M.Match (MB ns es c)) | null ns   = [[luas| return $c; |]]
+                                  | otherwise = [Lua.Bind ns es, [luas| return $c; |]]
+genDTree d (M.Switch pth ch) = [ go [] ch $ access pth ]
     where access (M.Var v) = Lua.Var $ Lua.Name v
           access (M.Access n p) = Lua.Array (Lua.Field (access p) (Lua.Name "args")) n
-          go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block [genDTree d dt]
-          go cs (M.Case c dt ch) x = go ((cond, Lua.Block [genDTree d dt]):cs) ch x
+          go cs (M.Default dt) _ = Lua.If cs $ Just $ Lua.Block (genDTree d dt)
+          go cs (M.Case c dt ch) x = go ((cond, Lua.Block (genDTree d dt)):cs) ch x
               where lc = Lua.EString $ show $ pretty $ M.c_id c
                     xk = Lua.EPre $ Lua.Field x (Lua.Name "ck")
                     xc = Lua.EPre $ Lua.Field x (Lua.Name "ccon")
@@ -100,11 +100,17 @@ genDTree d (M.Switch pth ch) = go [] ch $ access pth
 
 -- | Create a pattern matrix from a list of patterns, the created pattern
 -- matrix can be used with the CodeGen.Lua.Match module.
-mkPMat :: [Em TyRule] -> M.PMat (Em Expr) (Id Record)
-mkPMat = map (\r@(e :@ _ :--> rhs) -> (map (mkpat e) (Rule.patterns r), rhs))
+mkPMat :: [Lua.PreExp] -> [Em TyRule] -> M.PMat MatchBranch (Id Record)
+mkPMat vs = map (\r@(e :@ lhs :--> rhs) -> mkprow e (Rule.patterns r) vs rhs)
     where mkpat e (V x _) | x `isin` e = M.PGlob
           mkpat e t = unapply t (\(V c _) ps _ -> patCon e c ps)
           patCon e c ps = M.PCon (M.Con c (length ps)) $ map (mkpat e) ps
+          bdgs e ((V x _), v) | x `isin` e = [(codeName x, Lua.EPre v)]
+          bdgs e (t, v) =
+              let args = [ Lua.Array (Lua.Field v (Lua.Name "args")) i | i <- [1..] ]
+              in unapply t (\(V _ _) ps _ -> concatMap (bdgs e) $ zip ps args)
+          mkprow e ps vs rhs | (ns, es) <- unzip (bdgs e =<< zip ps vs) =
+              (map (mkpat e) ps, MB ns es (code rhs))
 
 -- | Turn a qualified id into a lua constant
 constant x vs = [luae| { ck = ccon, ccon = $s, args = $args } |]
