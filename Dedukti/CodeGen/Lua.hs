@@ -32,7 +32,7 @@ data Record = Rec { rec_id :: Qid
 instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
-    emit rs@(RS x ty rules) = Rec x (xcode : xterm : xchk)
+    emit rs@(RS x ty rules) = Rec x [xcode, xterm, xchk]
         where (tn, cn) = (termName x, codeName x)
               xstr = show $ pretty $ unqualify x
               xcode = [luas| `cn = $c; |]
@@ -42,7 +42,7 @@ instance CodeGen Record where
 
 
 
-              xchk = [ Lua.BindFun (chkName x) [] (Lua.Block chkl) ]
+              xchk = Lua.BindFun (chkName x) [] (Lua.Block chkl)
                   where tyterm = term ty
                         chkl = enclose (Lua.EString xstr) $
                                [luas| chksort($tyterm); |] : zipWith checkr [1..] rules
@@ -52,9 +52,9 @@ instance CodeGen Record where
               checkr n tr@(e :@ l :--> r) = Lua.Do $ Lua.Block $ chkrule
                   where Bundle chkenv = coalesce [ emit (RS id ty []) | (id ::: ty) <- env_bindings e ]
                         locals = if null (env_bindings e) then []
-                                 else [ Lua.Bind $
+                                 else [ flip Lua.Bind [] $
                                         do (n ::: _) <- env_bindings e
-                                           [ (f n, Lua.ENil) | f <- [codeName, termName ] ] ]
+                                           [ f n | f <- [codeName, termName] ] ]
                         chkrule = enclose (Lua.EString $ "rule " ++ show n) $
                                   locals ++ chkenv ++
                                   [ [luas| chkmsg("Environment processed, checking rule."); |]
