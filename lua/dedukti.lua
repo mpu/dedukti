@@ -13,8 +13,8 @@
 tlam, tpi, tapp, ttype, tbox =         -- Possible tk
   'tlam', 'tpi', 'tapp', 'ttype', 'tbox';
 
-clam, cpi, crule, ccon, ctype, ckind = -- Possible ck
-  'clam', 'cpi', 'crule', 'ccon', 'ctype', 'ckind'
+clam, cpi, ccon, ctype, ckind = -- Possible ck
+  'clam', 'cpi', 'ccon', 'ctype', 'ckind'
 
 function var(n)
   return { ck = ccon, ccon = "var" .. n, args = {} };
@@ -30,8 +30,8 @@ local function push(c, v)
     a[i] = c.args[i];
   end
   table.insert(a, v);
-  if c.ck == crule then
-    return { ck = crule, crule = c.crule, arity = c.arity, args = a };
+  if c.ck == clam then
+    return { ck = clam, clam = c.clam, arity = c.arity, args = a };
   else
     return { ck = ccon, ccon = c.ccon, args = a };
   end
@@ -39,12 +39,10 @@ end
 
 function ap(a, b)
   assert(a.ck and b.ck);
-  if a.ck == clam then      -- Apply a lambda.
-    return a.clam(b);
-  elseif a.ck == crule then -- Apply a rewrite rule.
+  if a.ck == clam then      -- Apply a rewrite rule/lambda.
     local c = push(a, b);
     if #c.args == c.arity then
-      return c.crule(unpack(c.args));
+      return c.clam(unpack(c.args));
     else
       return c;
     end
@@ -53,36 +51,31 @@ function ap(a, b)
   end
 end
 
-function conv(a, b)
-  local function conv(n, a, b)
-    assert(a.ck and b.ck);
-    local v = var(n);
-    if a.ck == clam and b.ck == clam then
-      return conv(n+1, ap(a, v), ap(b, v));
-    elseif a.ck == cpi and b.ck == cpi then
-      return conv(n, a.cpi[1], b.cpi[1])
-         and conv(n+1, a.cpi[2](v), b.cpi[2](v));
-    elseif a.ck == crule and b.ck == crule
-       and a.arity == b.arity and #a.args == #b.args then
-      return conv(n+1, ap(a, v), ap(b, v));
-    elseif a.ck == ccon and b.ck == ccon
-       and a.ccon == b.ccon and #a.args == #b.args then
-      for i=1,#a.args do
-        if not conv(n, a.args[i], b.args[i]) then
-          return false;
-        end
+function conv(n, a, b)
+  assert(a.ck and b.ck);
+  local v = var(n);
+  if a.ck == cpi and b.ck == cpi then
+    return conv(n, a.cpi[1], b.cpi[1])
+       and conv(n+1, a.cpi[2](v), b.cpi[2](v));
+  elseif a.ck == clam and b.ck == clam
+     and a.arity == b.arity and #a.args == #b.args then
+    return conv(n+1, ap(a, v), ap(b, v));
+  elseif a.ck == ccon and b.ck == ccon
+     and a.ccon == b.ccon and #a.args == #b.args then
+    for i=1,#a.args do
+      if not conv(n, a.args[i], b.args[i]) then
+        return false;
       end
-      return true;
-    elseif a.ck == ctype and b.ck == ctype then
-      return true;
-    elseif a.ck == ckind and b.ck == ckind then
-      return true;
-    else
-      print("Terms are not convertible: " .. strc(a) .. " " .. strc(b));
-      return false;
     end
+    return true;
+  elseif a.ck == ctype and b.ck == ctype then
+    return true;
+  elseif a.ck == ckind and b.ck == ckind then
+    return true;
+  else
+    print("Terms are not convertible: " .. strc(a) .. " " .. strc(b));
+    return false;
   end
-  return conv(0, a, b);
 end
 
 --[[ Typechecking functions. ]]
@@ -111,7 +104,7 @@ function check(n, t, c)
     local v = var(n);
     return check(n+1, t.tlam[2](box(c.cpi[1], v), v), c.cpi[2](v));
   else
-    return conv(synth(n, t), c);
+    return conv(n, synth(n, t), c);
   end
 end
 
@@ -161,7 +154,7 @@ end
 
 function strc(c)
   local function f(n, c)
-    if c.ck == clam or c.ck == crule then
+    if c.ck == clam then
       return "(\\" .. n .. ". " .. f(n+1, ap(c, var(n))) ..")";
     elseif c.ck == cpi then
       return "(Pi " .. n .. ":" .. f(n, c.cpi[1])

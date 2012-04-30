@@ -32,12 +32,12 @@ data Record = Rec { rec_id :: Qid
 instance CodeGen Record where
     data Bundle Record = Bundle [Lua.Stat]
 
-    emit rs@(RS x ty rules) = Rec x (xcode ++ xterm ++ xchk)
+    emit rs@(RS x ty rules) = Rec x (xcode : xterm : xchk)
         where (tn, cn) = (termName x, codeName x)
               xstr = show $ pretty $ unqualify x
-              xcode = [ [luas| `cn = $c; |] ]
+              xcode = [luas| `cn = $c; |]
                   where c = ruleCode variables x rules
-              xterm = [ [luas| `tn = { tk = tbox, tbox = { $tycode, `cn } }; |] ]
+              xterm = [luas| `tn = { tk = tbox, tbox = { $tycode, `cn } }; |]
                   where tycode = code ty
 
 
@@ -81,7 +81,7 @@ ruleCode ns x rs =
         vars = Stream.take a ns
         body = genDTree (constant x vars) $ M.compile (map M.Var vars) (mkPMat rs)
         r = Lua.EFun (map Lua.Name vars) (Lua.Block [body])
-    in if a > 0 then [luae| { ck = crule, crule = $r, arity = $ae, args = {} } |]
+    in if a > 0 then [luae| { ck = clam, clam = $r, arity = $ae, args = {} } |]
                 else case body of Lua.Ret e -> e
 
 -- | Convert a decision tree to valid Lua code.
@@ -114,9 +114,13 @@ constant x vs = [luae| { ck = ccon, ccon = $s, args = $args } |]
 -- | Turn an expression into a code object.
 code :: Em Expr -> Lua.Exp
 code (V x _) = lvar (codeName x)
-code (B (L x _) t _) =
-    let xn = codeName x; c = code t
-    in [luae| { ck = clam, clam = function (`xn) return $c; end } |]
+code (B (L x _) t _) = unLambda [codeName x] t
+    where unLambda l (B (L x _) t _) = unLambda (codeName x : l) t
+          unLambda l t =
+              let ar = Lua.ENum (length l)
+                  c = code t
+                  fun = Lua.EFun (reverse l) (Lua.Block [ [luas| return $c; |] ])
+              in [luae| { ck = clam, clam = $fun, arity = $ar, args = {} } |]
 code (B (x ::: ty) t _) =
     let xn = codeName x; cty = code ty; c = code t
     in [luae| { ck = cpi, cpi = { $cty, function (`xn) return $c; end } } |]
