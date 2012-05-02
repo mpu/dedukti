@@ -1,6 +1,6 @@
-nat : Type.
-
 nat_ : coc.Utype.
+
+nat : Type.
 
 [] nat --> coc.etype nat_.
 
@@ -23,7 +23,7 @@ nat_rec : t : coc.Utype
 , a : coc.etype t
 , f : nat -> coc.etype t -> coc.etype t
 , n : nat
-] nat_rec t a f (S n) --> f n (nat_rec t a f (S n)).
+] nat_rec t a f (S n) --> f n (nat_rec t a f n).
 
 plus : nat -> nat -> nat.
 
