@@ -172,7 +172,7 @@ termName = lname . (.$ "t")
 
 -- | Construct a Lua name to store the checking function of
 -- a term.
-chkName x = Lua.Name $ "chk_" ++ show (pretty (unqualify x))
+chkName x = Lua.Name $ "chk_" ++ xencode "_" (unqualify x)
 
 -- | Produce a set of variables y1, ..., yn
 variables = Stream.unfold (\i -> ('y':show i, i + 1)) 0
