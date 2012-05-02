@@ -36,7 +36,6 @@ instance CodeGen Record where
 
     emit rs@(RS x ty rules) = Rec x [xcode, xterm, xchk]
         where (tn, cn) = (termName x, codeName x)
-              xstr = show $ pretty $ unqualify x
               xcode = [luas| `cn = $c; |]
                   where c = ruleCode variables x rules
               xterm = [luas| `tn = { tk = tbox, tbox = { $tycode, `cn } }; |]
@@ -44,7 +43,7 @@ instance CodeGen Record where
 
               xchk = Lua.BindFun (chkName x) [] (Lua.Block chkl)
                   where tyterm = term ty
-                        chkl = enclose (Lua.EString xstr) $
+                        chkl = enclose (Lua.EString $ show $ qid_stem x) $
                                [luas| chksort($tyterm); |] : zipWith checkr [1..] rules
 
               checkr n tr@(e :@ l :--> r) = Lua.Do $ Lua.Block $ chkrule
