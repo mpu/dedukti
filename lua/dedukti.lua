@@ -10,11 +10,11 @@
 -- Code can be of 6 kinds, either a lambda, a product, a
 -- rule, a constant, type, or kind.
 
-tlam, tpi, tapp, ttype, tbox =         -- Possible tk
+tlam, tpi, tapp, ttype, tbox =  -- Possible tk
   'tlam', 'tpi', 'tapp', 'ttype', 'tbox';
 
 clam, cpi, ccon, ctype, ckind = -- Possible ck
-  'clam', 'cpi', 'ccon', 'ctype', 'ckind'
+  'clam', 'cpi', 'ccon', 'ctype', 'ckind';
 
 function var(n)
   return { ck = ccon, ccon = "var" .. n, args = {} };
@@ -133,7 +133,7 @@ end
 
 local indent = 0;
 local function shiftp(m)
-  print(string.rep("  ", indent) .. m)
+  print(string.rep("  ", indent) .. m);
 end
 
 function chkbeg(x)
@@ -166,14 +166,19 @@ function strc(c)
       end
       return s .. ")";
     elseif c.ck == ctype then
-      return "Type"
+      return "Type";
     elseif c.ck == ckind then
-      return "Kind"
+      return "Kind";
     else
-      return "!! not code !!"
+      return "!! not code !!";
     end
   end
   return f(0, c);
 end
+
+--[[ Miscelaneous. ]]
+
+-- Allows to load .dko files using require.
+package.path = "./?.dko;" .. package.path;
 
 -- vi: expandtab: sw=2
