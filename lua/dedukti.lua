@@ -57,8 +57,7 @@ function conv(n, a, b)
   if a.ck == cpi and b.ck == cpi then
     return conv(n, a.cpi[1], b.cpi[1])
        and conv(n+1, a.cpi[2](v), b.cpi[2](v));
-  elseif a.ck == clam and b.ck == clam
-     and a.arity == b.arity and #a.args == #b.args then
+  elseif a.ck == clam and b.ck == clam then
     return conv(n+1, ap(a, v), ap(b, v));
   elseif a.ck == ccon and b.ck == ccon
      and a.ccon == b.ccon and #a.args == #b.args then
