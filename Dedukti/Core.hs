@@ -16,7 +16,7 @@ module Dedukti.Core
     , isAbstraction, isVariable, isAtomic, isApplicative, isKind
     -- * Environments
     , emptyEnv, env_bindings, env_domain, env_codomain, (&), (!)
-    , isin, fromBindings
+    , isin, fromBindings, fromrBindings
     -- * Anntoations
     , annot, Unannot, nann, (%%), (%%%), (<%%>), (<%%%>)
     -- * Smart constructors
@@ -155,8 +155,9 @@ Env _ map ! x = map Map.! x
 isin :: Ord id => id -> Env id a -> Bool
 isin x (Env _ map) = Map.member x map
 
-fromBindings :: Ord id => [Binding id a] -> Env id a
-fromBindings = foldr (&) (Env [] Map.empty)
+fromBindings, fromrBindings :: Ord id => [Binding id a] -> Env id a
+fromBindings  = foldr (&) (Env [] Map.empty)
+fromrBindings = foldl (flip (&)) (Env [] Map.empty)
 
 -- | The type of vacuous annotations.
 data Unannot = Unannot deriving (Eq, Ord, Show)

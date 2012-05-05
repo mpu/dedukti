@@ -64,5 +64,7 @@ instance Exception BadPattern
 -- variables in the rule environment.
 checkHead :: TyRule Qid a -> DkM ()
 checkHead (env :@ lhs :--> rhs) =
-    let bad = [ x | A (V x _) _ _ <- everyone lhs, x `isin` env ]
+    let bad = (case lhs of V x _ | x `isin` env -> [x]
+                           _ -> [])
+              ++ [ x | A (V x _) _ _ <- everyone lhs, x `isin` env ]
     in when (not (null bad)) $ throw (BadPattern bad)

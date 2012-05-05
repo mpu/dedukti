@@ -119,8 +119,7 @@ mkpair n ty = Pair (Box ty (Var n)) (Var n)
 check :: Int -> Term -> Code -> ()
 check n (TLam _ f) (Pi a f') = check (n + 1) (f (mkpair n a)) (f' (Var n))
 check n (TPi (Box Type tya) f) ty = check (n + 1) (f (mkpair n tya)) ty
-check n (TLet (Pair t tc) f) ty
-    | tyt <- synth n t = check n (f (Pair (Box tyt tc) tc)) ty
+check n (TLet p f) ty = check n (f p) ty
 check n t ty = convertible n (synth n t) ty
 
 synth :: Int -> Term -> Code
@@ -131,8 +130,7 @@ synth n (TApp t1 (Pair t2 c2))
 synth n TType = Kind
 synth n (TLam (Just (Box Type ty)) f) =
     Pi ty (\xc -> synth n (f (Pair (Box ty xc) xc)))
-synth n (TLet (Pair t tc) f)
-    | tyt <- synth n t = synth n (f (Pair (Box tyt tc) tc))
+synth n (TLet p f) = synth n (f p)
 synth n t = throw SynthError
 
 checkDeclaration :: String -> a -> IO ()
