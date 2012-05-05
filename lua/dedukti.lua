@@ -72,7 +72,9 @@ function conv(n, a, b)
   elseif a.ck == ckind and b.ck == ckind then
     return true;
   else
-    print("Terms are not convertible: " .. strc(a) .. " " .. strc(b));
+    print("Terms are not convertible:");
+    print("    " .. strc(a));
+    print("    " .. strc(b));
     return false;
   end
 end
