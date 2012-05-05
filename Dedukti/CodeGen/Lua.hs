@@ -6,6 +6,7 @@ import Dedukti.CodeGen
 import Dedukti.CodeGen.Tools
 import Dedukti.Module
 import Dedukti.Pretty
+import Dedukti.Reduction
 import qualified Dedukti.CodeGen.Lua.Match as M
 import qualified Dedukti.Rule as Rule
 import qualified Language.Lua as Lua
@@ -129,6 +130,7 @@ code (B (L x _) t _) = unLambda [codeName x] t
 code (B (x ::: ty) t _) =
     let xn = codeName x; cty = code ty; c = code t
     in [luae| { ck = cpi, cpi = { $cty, function (`xn) return $c; end } } |]
+code t@(B (_ := _) _ _) = code (zetaSmall t)
 code (A t1 t2 _) =
     let c1 = code t1; c2 = code t2
     in [luae| ap($c1, $c2) |]
@@ -138,7 +140,7 @@ code Type = [luae| { ck = ctype } |]
 term :: Em Expr -> Lua.Exp
 term (V x _) = lvar (termName x)
 term (B (L x ty) t _) =
-    let (xt, xc) = (termName x, codeName x)
+    let xt = termName x; xc = codeName x
         tyterm = case ty of
                    Nothing -> [luae| nil |]
                    Just ty -> [luae| chkabs($t, $c) |]
@@ -146,11 +148,16 @@ term (B (L x ty) t _) =
         tm = term t
     in [luae| { tk = tlam; tlam = { $tyterm, function (`xt, `xc) return $tm; end } } |]
 term (B (x ::: ty) t _) =
-    let (xt, xc) = (termName x, codeName x)
+    let xt = termName x; xc = codeName x
         tyc = if isVariable ty then code ty else [luae| chkabs($t, $c) |]
               where t = term ty; c = code ty
         tm = term t
     in [luae| { tk = tpi; tpi = { $tyc, function (`xt, `xc) return $tm; end } } |]
+term (B (x := t') t _) =
+    let xt = termName x; xc = codeName x
+        tt = term t'; tc = code t'
+        tm = term t
+    in [luae| { tk = tlet; tlet = { $tt, $tc, function (`xt, `xc) return $tm; end } } |]
 term (A t1 t2 _) =
     let tt1 = term t1; tt2 = term t2; ct2 = code t2
     in [luae| { tk = tapp; tapp = { $tt1, $tt2, $ct2 } } |]

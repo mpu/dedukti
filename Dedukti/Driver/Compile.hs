@@ -14,7 +14,7 @@ import Dedukti.DkM
 import Dedukti.Core
 import Dedukti.Analysis.Dependency
 import Dedukti.Analysis.Scope
--- import Dedukti.Synthesis.ANF
+import Dedukti.Synthesis.ANF
 -- import Dedukti.Synthesis.CC
 import qualified Dedukti.CodeGen as CG
 import qualified Dedukti.CodeGen.Exts
@@ -93,8 +93,8 @@ compileAST mod src@(decls, rules) = do
   say Verbose $ text "Compiling" <+> text (show mod) <+> text "..."
   rss <- {-# SCC "pass" #-} do
         pass ({-# SCC "pass/qual"    #-} selfQualify mod)     (text "Self qualifying constants ...")
---    >=> pass ({-# SCC "pass/monadic" #-} descend monadic)     (text "Transformation to monadic form ...")
---    >=> pass ({-# SCC "pass/anf"     #-} descend anf)         (text "Reduction to administrative normal form ...")
+    >=> pass ({-# SCC "pass/monadic" #-} descend monadic)     (text "Transformation to monadic form ...")
+    >=> pass ({-# SCC "pass/anf"     #-} descend anf)         (text "Reduction to administrative normal form ...")
 --    >=> pass ({-# SCC "pass/cc"      #-} descend closureConv) (text "Closure converting ...")
 --    >=> pass ({-# SCC "pass/hoist"   #-} descend hoist)       (text "Hoisting abstractions to toplevel ...")
            $ Rule.ruleSets decls rules

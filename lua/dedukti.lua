@@ -10,10 +10,10 @@
 -- Code can be of 6 kinds, either a lambda, a product, a
 -- rule, a constant, type, or kind.
 
-tlam, tpi, tapp, ttype, tbox =  -- Possible tk
-  'tlam', 'tpi', 'tapp', 'ttype', 'tbox';
+tlam, tlet, tpi, tapp, ttype, tbox = -- Possible tk
+  'tlam', 'tlet', 'tpi', 'tapp', 'ttype', 'tbox';
 
-clam, cpi, ccon, ctype, ckind = -- Possible ck
+clam, cpi, ccon, ctype, ckind =      -- Possible ck
   'clam', 'cpi', 'ccon', 'ctype', 'ckind';
 
 function var(n)
@@ -85,6 +85,8 @@ function synth(n, t)
     return t.tbox[1];
   elseif t.tk == ttype then
     return { ck = ckind };
+  elseif t.tk == tlet then
+    return synth(n, t.tlet[3](t.tlet[1], t.tlet[2]));
   elseif t.tk == tapp then
     local c = synth(n, t.tapp[1]);
     assert(c.ck == cpi and check(n, t.tapp[2], c.cpi[1]));
@@ -102,6 +104,8 @@ function check(n, t, c)
   if t.tk == tlam and c.ck == cpi then
     local v = var(n);
     return check(n+1, t.tlam[2](box(c.cpi[1], v), v), c.cpi[2](v));
+  elseif t.tk == tlet then
+    return check(n, t.tlet[3](t.tlet[1], t.tlet[2]), c);
   else
     return conv(n, synth(n, t), c);
   end
