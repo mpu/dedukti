@@ -95,9 +95,9 @@ ident = qid . B.pack <$> identifier
 -- >            | eof
 toplevel =
     whiteSpace *>
-        choice [ rule *> toplevel -- Rules are accumulated by side effect.
-               , (:) <$> declaration <*> toplevel
-               , eof *> return [] ]
+    (    (rule *> toplevel) -- Rules are accumulated by side-effect.
+     <|> ((:) <$> declaration <*> toplevel)
+     <|> (eof *> return []))
 
 -- | Binding construct.
 --
@@ -111,14 +111,13 @@ binding = ((:::) <$> ident <* reservedOp ":" <*> term)
 declaration = (binding <* dot)
               <?> "declaration"
 
--- | Left hand side of a product or a lambda.
+-- | Left hand side of an abstraction or a product.
 --
--- > domain ::= [id ":"] applicative "->"
--- >          | id [":" applicative] "=>"
-domain = try (lambda <* reservedOp "=>") <|> try (pi <* reservedOp "->")
-    where lambda = L <$> ident <*> optionMaybe (reservedOp ":" *> applicative) <?> "lambda"
-          pi = (:::) <$> (try (ident <* reservedOp ":") <|> return (qid "hole" .$ "parser"))
-                     <*> applicative <?> "pi"
+-- > domain ::= id ":" applicative
+-- >          | applicative
+domain = (    ((,) <$> try (Just <$> ident <* reservedOp ":") <*> applicative)
+          <|> ((,) <$> pure Nothing <*> applicative))
+         <?> "domain"
 
 -- |
 -- > sort ::= "Type"
@@ -126,12 +125,23 @@ sort = Type <$ reserved "Type"
 
 -- | Terms and types.
 --
--- We first try to parse the term as a pi or lambda binding. If it fails,
--- we parse the rest as an applicative.
+-- We first try to parse as the domain of a lambda or pi. If we
+-- later find out there was no arrow after the domain, then we take
+-- the domain to be an expression, and return that.
 --
--- > term ::= domain term
+-- > term ::= domain "->" term
+-- >        | domain "=>" term
 -- >        | applicative
-term = (B <$> domain <*> term <%%> nann) <|> applicative
+term = do
+  p@(x, ty) <- domain
+  let d = maybe (qid "hole" .$ "parser") id x ::: ty
+  choice [ pi d <?> "pi"
+         , lambda p <?> "lambda"
+         , return ty]
+    where pi d = B d <$ reservedOp "->" <*> term <%%> nann
+          lambda (Nothing, V x _) = B (L x Nothing) <$ reservedOp "=>" <*> term <%%> nann
+          lambda (Just id, ty) = B (L id (Just ty)) <$ reservedOp "=>" <*> term <%%> nann
+          lambda _ = mzero
 
 -- | Constituents of an applicative form.
 --
